@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SSH 终端 - SSH Tunnel Platform</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@4.17.0/css/xterm.css" />
+    <script src="https://cdn.jsdelivr.net/npm/xterm@4.17.0/lib/xterm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.5.0/lib/xterm-addon-fit.js"></script>
+    <style>
+        body {
+            background-color: #0c0c0c; /* Dark background like Windows Terminal */
+            color: #cccccc;
+        }
+        #terminal-container {
+            width: 100%;
+            height: 600px; /* Fixed height for xterm.js */
+            background-color: #0c0c0c;
+            border-radius: 0.5rem;
+            overflow: hidden; /* Ensure xterm.js content stays within bounds */
+        }
+        .xterm .xterm-viewport {
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 min-h-screen text-white p-8" x-data="terminalApp()">
+    <div class="max-w-4xl mx-auto">
+        <div class="flex justify-between items-center mb-6">
+            <div>
+                <h1 class="text-2xl font-bold text-indigo-400">远程终端</h1>
+                <p class="text-gray-400 text-sm">隧道 ID: <span class="text-indigo-300" x-text="tunnelId"></span></p>
+            </div>
+            <a href="/" class="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded text-sm transition">返回仪表盘</a>
+        </div>
+
+        <div id="terminal-container" class="terminal-output shadow-2xl mb-4"></div>
+        
+        <div class="mt-4 text-gray-500 text-xs text-center">
+            提示：这是一个交互式 SSH 终端，支持大部分终端操作。
+        </div>
+    </div>
+
+    <script>
+        function terminalApp() {
+            return {
+                tunnelId: new URLSearchParams(window.location.search).get('tid'),
+                currentUser: localStorage.getItem('username') || 'user',
+                term: null,
+                fitAddon: null,
+                websocket: null,
+                API_BASE: '',
+
+                async init() {
+                    // Wait for XTerm and FitAddon to be available
+                    let attempts = 0;
+                    while ((!window.Terminal || !window.FitAddon) && attempts < 10) {
+                        await new Promise(r => setTimeout(r, 100));
+                        attempts++;
+                    }
+
+                    if (!window.Terminal) {
+                        console.error('XTerm not loaded');
+                        return;
+                    }
+
+                    this.term = new Terminal({
+                        fontSize: 14,
+                        fontFamily: 'Consolas, "Courier New", monospace',
+                        theme: {
+                            background: '#1a1a1a',
+                            foreground: '#00ff00',
+                            cursor: '#00ff00',
+                            selection: 'rgba(0, 255, 0, 0.3)'
+                        }
+                    });
+                    if (window.FitAddon) {
+                        this.fitAddon = new window.FitAddon.FitAddon();
+                        this.term.loadAddon(this.fitAddon);
+                    }
+                    this.term.open(document.getElementById('terminal-container'));
+                    if (this.fitAddon) this.fitAddon.fit();
+
+                    window.addEventListener('resize', () => {
+                        this.fitAddon.fit();
+                    });
+
+                    this.connectWebSocket();
+
+                    this.term.onData(data => {
+                        if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+                            this.websocket.send(data);
+                        }
+                    });
+                },
+
+                connectWebSocket() {
+                    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                    this.websocket = new WebSocket(`${wsProtocol}//${window.location.host}/tunnel/ws/terminal/${this.tunnelId}?user=${encodeURIComponent(this.currentUser)}`);
+
+                    this.websocket.onopen = () => {
+                        this.term.write('\x1b[32mConnected to SSH tunnel terminal.\x1b[0m\r\n');
+                        this.term.focus();
+                    };
+
+                    this.websocket.onmessage = event => {
+                        this.term.write(event.data);
+                    };
+
+                    this.websocket.onclose = () => {
+                        this.term.write('\r\n\x1b[31mDisconnected from SSH tunnel terminal.\x1b[0m\r\n');
+                        this.term.blur();
+                    };
+
+                    this.websocket.onerror = error => {
+                        this.term.write('\r\n\x1b[31mWebSocket error: ' + error.message + '\x1b[0m\r\n');
+                        console.error('WebSocket error:', error);
+                    };
+                }
+            }
+        }
+    </script>
+</body>
+</html>
