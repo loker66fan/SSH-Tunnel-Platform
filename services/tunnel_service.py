@@ -104,15 +104,15 @@ class TunnelService:
 
     async def verify_tunnel(self, user: str, tunnel_id: str, local_port: int):
         try:
-            success = await tunnel_manager.verify_tunnel(tunnel_id, local_port)
+            result = await tunnel_manager.verify_tunnel(tunnel_id, local_port)
             await audit_logger.log(AuditLog(
                 user=user,
                 action="verify_tunnel",
                 resource=tunnel_id,
-                status="success" if success else "failed",
-                details=f"Port: {local_port}"
+                status="success" if result["success"] else "failed",
+                details=f"Port: {local_port}, Latency: {result['latency_ms']}ms"
             ))
-            return success
+            return result
         except Exception as e:
             await audit_logger.log(AuditLog(
                 user=user,

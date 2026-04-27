@@ -67,8 +67,7 @@ async def list_tunnels():
 @router.post("/verify/{tunnel_id}")
 async def verify_tunnel(tunnel_id: str, local_port: int, x_user: str = Header("user")):
     try:
-        success = await tunnel_service.verify_tunnel(x_user, tunnel_id, local_port)
-        return {"success": success}
+        return await tunnel_service.verify_tunnel(x_user, tunnel_id, local_port)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

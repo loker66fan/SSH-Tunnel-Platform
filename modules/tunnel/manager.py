@@ -3,6 +3,7 @@ from core.logger import logger
 import uuid
 import socket
 import asyncio
+import time
 from typing import Optional
 
 class TunnelManager:
@@ -78,31 +79,32 @@ class TunnelManager:
         backend = self._active_tunnels[tunnel_id]
         return await backend.run_command(command)
 
+    def _check_port_with_latency(self, port):
+        t0 = time.perf_counter()
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(2)
+            ok = s.connect_ex(('127.0.0.1', port)) == 0
+        latency_ms = (time.perf_counter() - t0) * 1000
+        return ok, latency_ms
+
     async def verify_tunnel(self, tunnel_id, local_port):
         if tunnel_id not in self._active_tunnels:
             raise Exception("Tunnel not found")
         backend = self._active_tunnels[tunnel_id]
         
-        # 如果是 SOCKS5，使用特殊的验证逻辑
         if hasattr(backend, '_is_socks') and backend._is_socks:
             if hasattr(backend, 'verify_socks'):
-                return await backend.verify_socks(local_port)
-            return False
+                ok = await backend.verify_socks(local_port)
+                return {"success": ok, "latency_ms": None}
+            return {"success": False, "latency_ms": None}
             
-        # 对于本地转发，检查本地端口是否在监听且可连接
-        
+        loop = asyncio.get_running_loop()
         try:
-            # 尝试连接本地端口
-            _, writer = await asyncio.wait_for(
-                asyncio.open_connection('127.0.0.1', local_port),
-                timeout=2.0
-            )
-            writer.close()
-            await writer.wait_closed()
-            return True
+            ok, latency_ms = await loop.run_in_executor(None, self._check_port_with_latency, local_port)
+            return {"success": ok, "latency_ms": latency_ms}
         except Exception as e:
             logger.error(f"Local tunnel verification failed on port {local_port}: {str(e)}")
-            return False
+            return {"success": False, "latency_ms": None}
 
     async def update_tunnel(self, tunnel_id: str, 
                             new_remark: Optional[str] = None, 
