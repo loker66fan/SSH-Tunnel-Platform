@@ -3,7 +3,6 @@ from core.logger import logger
 import uuid
 import socket
 import asyncio
-import time
 from typing import Optional
 
 class TunnelManager:
@@ -39,7 +38,8 @@ class TunnelManager:
             raise Exception(f"Port {local_port} is already in use")
         
         tunnel_id = str(uuid.uuid4())
-        backend = AsyncSSHBackend(host=host, port=port, username=username, password=password, remark=remark)
+        backend = AsyncSSHBackend(host=host, port=port, username=username, password=password, remark=remark,
+                                   local_port=local_port, remote_host=remote_host, remote_port=remote_port)
         try:
             await backend.connect(host, port, username, password)
             await backend.open_tunnel(local_port, remote_host, remote_port)
@@ -55,7 +55,8 @@ class TunnelManager:
             raise Exception(f"Port {local_port} is already in use")
         
         tunnel_id = str(uuid.uuid4())
-        backend = AsyncSSHBackend(host=host, port=port, username=username, password=password, remark=remark)
+        backend = AsyncSSHBackend(host=host, port=port, username=username, password=password, remark=remark,
+                                   local_port=local_port)
         try:
             await backend.connect(host, port, username, password)
             await backend.open_socks_proxy(local_port)
@@ -79,32 +80,17 @@ class TunnelManager:
         backend = self._active_tunnels[tunnel_id]
         return await backend.run_command(command)
 
-    def _check_port_with_latency(self, port):
-        t0 = time.perf_counter()
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(2)
-            ok = s.connect_ex(('127.0.0.1', port)) == 0
-        latency_ms = (time.perf_counter() - t0) * 1000
-        return ok, latency_ms
-
     async def verify_tunnel(self, tunnel_id, local_port):
         if tunnel_id not in self._active_tunnels:
             raise Exception("Tunnel not found")
         backend = self._active_tunnels[tunnel_id]
-        
-        if hasattr(backend, '_is_socks') and backend._is_socks:
-            if hasattr(backend, 'verify_socks'):
-                ok = await backend.verify_socks(local_port)
-                return {"success": ok, "latency_ms": None}
-            return {"success": False, "latency_ms": None}
-            
-        loop = asyncio.get_running_loop()
         try:
-            ok, latency_ms = await loop.run_in_executor(None, self._check_port_with_latency, local_port)
-            return {"success": ok, "latency_ms": latency_ms}
-        except Exception as e:
-            logger.error(f"Local tunnel verification failed on port {local_port}: {str(e)}")
-            return {"success": False, "latency_ms": None}
+            conn_alive = backend._conn is not None and not backend._conn.is_closed()
+        except Exception:
+            conn_alive = False
+        if conn_alive:
+            return {"success": True, "latency_ms": None}
+        return {"success": False, "latency_ms": None}
 
     async def update_tunnel(self, tunnel_id: str, 
                             new_remark: Optional[str] = None, 
@@ -118,28 +104,39 @@ class TunnelManager:
                             new_type: Optional[str] = None):
         if tunnel_id not in self._active_tunnels:
             return False
-        backend = self._active_tunnels[tunnel_id]
-        if new_remark is not None:
-            backend.update_remark(new_remark)
-        if new_ssh_host is not None or new_ssh_port is not None:
-            backend.update_host_port(new_ssh_host, new_ssh_port)
+        old = self._active_tunnels[tunnel_id]
         
-        # For MVP, other parameters are not supported for live updates on an active tunnel.
-        # Changing them would typically require stopping and re-creating the tunnel.
-        if new_username is not None:
-            logger.warning(f"Attempted to update username for active tunnel {tunnel_id}, but not supported for live update.")
-        if new_password is not None:
-            logger.warning(f"Attempted to update password for active tunnel {tunnel_id}, but not supported for live update.")
-        if new_local_port is not None:
-            logger.warning(f"Attempted to update local_port for active tunnel {tunnel_id}, but not supported for live update.")
-        if new_remote_host is not None:
-            logger.warning(f"Attempted to update remote_host for active tunnel {tunnel_id}, but not supported for live update.")
-        if new_remote_port is not None:
-            logger.warning(f"Attempted to update remote_port for active tunnel {tunnel_id}, but not supported for live update.")
-        if new_type is not None:
-            logger.warning(f"Attempted to update type for active tunnel {tunnel_id}, but not supported for live update.")
-
-        return True
+        host = new_ssh_host if new_ssh_host is not None else old._host
+        port = new_ssh_port if new_ssh_port is not None else old._port
+        username = new_username if new_username is not None else old._username
+        password = new_password if new_password is not None else old._password
+        local_port = new_local_port if new_local_port is not None else old._local_port
+        remote_host = new_remote_host if new_remote_host is not None else old._remote_host
+        remote_port = new_remote_port if new_remote_port is not None else old._remote_port
+        tunnel_type = new_type if new_type is not None else ("socks5" if old._is_socks else "local")
+        remark = new_remark if new_remark is not None else old._remark
+        
+        self._active_tunnels.pop(tunnel_id)
+        await old.close()
+        await asyncio.sleep(0.1)
+        
+        try:
+            if tunnel_type == "socks5":
+                backend = AsyncSSHBackend(host=host, port=port, username=username, password=password, remark=remark,
+                                           local_port=local_port)
+                await backend.connect(host, port, username, password)
+                await backend.open_socks_proxy(local_port)
+            else:
+                backend = AsyncSSHBackend(host=host, port=port, username=username, password=password, remark=remark,
+                                           local_port=local_port, remote_host=remote_host, remote_port=remote_port)
+                await backend.connect(host, port, username, password)
+                await backend.open_tunnel(local_port, remote_host, remote_port)
+            self._active_tunnels[tunnel_id] = backend
+            return True
+        except Exception as e:
+            logger.error(f"Failed to recreate tunnel {tunnel_id}: {str(e)}")
+            await backend.close()
+            raise
 
     def get_tunnel_backend(self, tunnel_id: str):
         return self._active_tunnels.get(tunnel_id)

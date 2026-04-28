@@ -219,6 +219,10 @@ ssh_gateway_project_v2/
 │   ├── index.html            # 仪表盘 (TailwindCSS + Alpine.js)
 │   └── terminal.html         # Web SSH 终端 (xterm.js)
 │
+├── schemas/                  # 数据模型定义（预留）
+├── scripts/                  # 工具脚本
+├── tests/                    # 测试文件
+│
 ├── keys/                     # SSH 主机密钥
 ├── deploy/                   # 部署配置
 │
@@ -297,10 +301,10 @@ python -m uvicorn apps.api.main:app --host 0.0.0.0 --port 18002
 
 | 操作 | 说明 |
 |------|------|
-| **验证** | 检查隧道连通性 |
-| **修改** | 编辑隧道参数 |
-| **终端** | 打开交互式 Web SSH 终端 |
-| **停止** | 关闭并移除隧道 |
+| ⚡ **验证** | SSH 连接存活检测，三色图标：绿色（正常）/ 黄色（检测中）/ 红色（断开） |
+| ✏️ **修改** | 停止旧隧道 + 用新参数重建（支持 SSH 主机/端口/用户名/密码/远程目标/备注） |
+| 🖥️ **终端** | 打开交互式 Web SSH 终端 |
+| 🛑 **停止** | 关闭并移除隧道 |
 
 ---
 
@@ -321,9 +325,9 @@ python -m uvicorn apps.api.main:app --host 0.0.0.0 --port 18002
 |------|------|------|
 | `POST` | `/tunnel/create` | 创建隧道 |
 | `GET` | `/tunnel/list` | 列出所有隧道 |
-| `POST` | `/tunnel/verify/{id}` | 验证隧道连通性 |
+| `POST` | `/tunnel/verify/{id}` | 验证隧道连通性 (SSH 连接存活检测) |
 | `POST` | `/tunnel/exec/{id}` | 执行命令 |
-| `POST` | `/tunnel/update/{id}` | 修改隧道参数 |
+| `POST` | `/tunnel/update/{id}` | 修改隧道参数 (停止重建) |
 | `POST` | `/tunnel/stop/{id}` | 停止隧道 |
 | **WS** | `/tunnel/ws/terminal/{id}` | WebSocket 终端 |
 

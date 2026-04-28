@@ -195,6 +195,25 @@ ssh_gateway_project_v2/
 | 4 | `'str' object has no attribute 'decode'` | PTY 模式返回数据已是 `str`，无需 `.decode()` | 添加 `isinstance(data, bytes)` 判断后再 decode |
 | 5 | MFA 启用失败 `No module named 'PIL'` | `qrcode` 生成图片依赖 `Pillow`，环境中未安装 | `pip install Pillow` |
 
+### 2026-04-27：隧道修改功能 & 验证状态修复
+
+**Bug 修复**：
+
+| # | Bug | 根因 | 修复方案 |
+|---|-----|------|---------|
+| 6 | 修改隧道后 SSH 配置未生效 | `update_tunnel` 只更新了内存属性，未重建 SSH 连接和隧道 | 重写为停止旧隧道 → 用新参数重建 SSH 连接和隧道（保留原 tunnel_id） |
+| 7 | 验证状态图标始终红色 | `socket.connect_ex` 与 asyncssh 隧道存在兼容性问题，端口检测不可靠 | 改用 `backend._conn.is_closed()` 直接检查 SSH 连接存活状态 |
+| 8 | 编辑弹窗字段映射错误 | list API 返回 `ssh_username` 但前端读取 `username` | 统一字段名并补全 `password`/`remote_host`/`remote_port` 返回 |
+
+**功能改进**：
+
+- **AsyncSSHBackend**：新增 `local_port`/`remote_host`/`remote_port` 配置存储及 `password` 属性暴露
+- **TunnelManager.create**：创建时将完整配置传入 `AsyncSSHBackend` 存储
+- **TunnelManager.verify_tunnel**：改用 SSH 连接存活检测（终端能用即验证通过）
+- **隧道列表 API**：直接返回 backend 存储的 `local_port`/`remote_host`/`remote_port`/`username`/`password`
+- **前端验证图标**：三状态逻辑 — 🟢 绿色（SSH 连接正常）、🟡 黄色闪烁（检测中）、🔴 红色（连接失败）
+- **移除延迟显示**：图标颜色直接反映可用性，不再显示毫秒数
+
 ### 2026-04-27：基础功能实现
 
 - 密码认证（bcrypt 哈希存储）

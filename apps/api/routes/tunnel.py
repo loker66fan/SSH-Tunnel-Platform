@@ -30,36 +30,21 @@ async def create_tunnel(req: TunnelCreateRequest, x_user: str = Header("user")):
 @router.get("/list")
 async def list_tunnels():
     tunnels_info = []
-    # debug log
     logger.info(f"Listing tunnels, count: {len(tunnel_manager._active_tunnels)}")
     
     for tid, backend in tunnel_manager._active_tunnels.items():
-        # Get the first tunnel's local port (MVP assumes one listener per backend)
-        local_port = 0
-        if backend._tunnels:
-            # asyncssh listener object
-            # Note: For SOCKS5, it might be a list of listeners
-            listener = backend._tunnels[0]
-            try:
-                if hasattr(listener, 'get_port'):
-                    local_port = listener.get_port()
-                elif hasattr(listener, 'get_extra_info'):
-                    addr = listener.get_extra_info('sockname')
-                    if addr:
-                        local_port = addr[1]
-            except:
-                pass
-        
-        # Determine tunnel type
         is_socks = hasattr(backend, '_is_socks') and backend._is_socks
         
         tunnels_info.append({
             "id": tid,
-            "local_port": local_port,
+            "local_port": backend.local_port or 0,
             "type": "socks5" if is_socks else "local",
             "ssh_host": backend.host,
             "ssh_port": backend.port,
-            "ssh_username": backend.username,
+            "username": backend.username,
+            "password": backend.password,
+            "remote_host": backend.remote_host,
+            "remote_port": backend.remote_port,
             "remark": backend.remark
         })
     return {"tunnels": tunnels_info}

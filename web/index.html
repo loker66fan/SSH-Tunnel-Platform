@@ -234,14 +234,14 @@
                                 <li class="py-4 flex justify-between items-center">
                                     <div class="flex items-center">
                                         <div class="h-8 w-8 rounded-full flex items-center justify-center"
-                                             :class="tunnel.verified === true ? 'bg-green-100' : (tunnel.verified === false ? 'bg-red-100' : (tunnel.verified === 'loading' ? 'bg-yellow-100' : 'bg-gray-100'))">
-                                            <svg class="h-5 w-5" :class="tunnel.verified === true ? 'text-green-600' : (tunnel.verified === false ? 'text-red-600' : (tunnel.verified === 'loading' ? 'text-yellow-500 animate-pulse' : 'text-gray-400'))" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                             :class="tunnel.verified === 'loading' ? 'bg-yellow-100' : (tunnel.verified === false ? 'bg-red-100' : 'bg-green-100')">
+                                            <svg class="h-5 w-5" :class="tunnel.verified === 'loading' ? 'text-yellow-500 animate-pulse' : (tunnel.verified === false ? 'text-red-600' : 'text-green-600')" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
                                             </svg>
                                         </div>
                                         <div class="ml-3">
                                              <p class="text-sm font-medium text-gray-900" x-text="tunnel.remark || (tunnel.id.substring(0,8) + '...')"></p>
-                                             <p class="text-xs text-gray-500" x-text="'Port: ' + tunnel.local_port + ' (' + tunnel.type + ')' + (tunnel.latency_ms ? ' • ' + tunnel.latency_ms.toFixed(1) + 'ms' : '')"></p>
+                                             <p class="text-xs text-gray-500" x-text="'Port: ' + tunnel.local_port + ' (' + tunnel.type + ')'"></p>
                                          </div>
                                     </div>
                                     <div class="flex space-x-2">
@@ -444,7 +444,7 @@
                         const data = await response.json();
                         this.tunnels = data.tunnels.map(t => {
                             const existing = this.tunnels.find(et => et.id === t.id);
-                            return existing ? { ...t, verified: existing.verified, latency_ms: existing.latency_ms } : { ...t, verified: null, latency_ms: null };
+                            return existing ? { ...t, verified: existing.verified } : { ...t, verified: true };
                         });
                     } catch (e) {
                         console.error(e);
@@ -456,7 +456,6 @@
                         const index = this.tunnels.findIndex(t => t.id === tunnel.id);
                         if (index !== -1) {
                             this.tunnels[index].verified = 'loading';
-                            this.tunnels[index].latency_ms = null;
                         }
 
                         const response = await fetch(`${this.API_BASE}/tunnel/verify/${tunnel.id}?local_port=${tunnel.local_port}`, {
@@ -467,14 +466,12 @@
                         
                         if (index !== -1) {
                             this.tunnels[index].verified = data.success;
-                            this.tunnels[index].latency_ms = data.latency_ms;
                         }
                     } catch (e) {
                         console.error(e);
                         const index = this.tunnels.findIndex(t => t.id === tunnel.id);
                         if (index !== -1) {
                             this.tunnels[index].verified = false;
-                            this.tunnels[index].latency_ms = null;
                         }
                     }
                 },
@@ -548,8 +545,8 @@
                             })
                         });
                         if (response.ok) {
-                            alert('隧道备注更新成功！');
-                            this.fetchTunnels(); // 刷新列表以显示更新后的备注
+                            alert('隧道更新成功！');
+                            this.fetchTunnels();
                             this.showEditTunnelModal = false;
                         } else {
                             const data = await response.json();

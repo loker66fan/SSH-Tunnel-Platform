@@ -7,15 +7,19 @@ from modules.ssh.base import SSHBackend
 from core.logger import logger
 
 class AsyncSSHBackend(SSHBackend):
-    def __init__(self, host: str = None, port: int = None, username: str = None, password: str = None, remark: str = None):
+    def __init__(self, host: str = None, port: int = None, username: str = None, password: str = None, remark: str = None,
+                 local_port: int = None, remote_host: str = None, remote_port: int = None):
         self._conn = None
         self._tunnels = []
         self._is_socks = False
         self._host = host
         self._port = port
         self._username = username
-        self._password = password # Store for potential re-connection or display (handle securely)
+        self._password = password
         self._remark = remark
+        self._local_port = local_port
+        self._remote_host = remote_host
+        self._remote_port = remote_port
 
     @property
     def host(self):
@@ -30,8 +34,24 @@ class AsyncSSHBackend(SSHBackend):
         return self._username
 
     @property
+    def password(self):
+        return self._password
+
+    @property
     def remark(self):
         return self._remark
+
+    @property
+    def local_port(self):
+        return self._local_port
+
+    @property
+    def remote_host(self):
+        return self._remote_host
+
+    @property
+    def remote_port(self):
+        return self._remote_port
 
     def update_remark(self, new_remark: str):
         self._remark = new_remark
