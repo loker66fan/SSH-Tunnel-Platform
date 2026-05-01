@@ -40,7 +40,7 @@ pip install -r requirements.txt
 | 库 | 版本 | 用途 |
 |----|------|------|
 | TailwindCSS | 3.x | UI 样式 |
-| Alpine.js | 3.x | 响应式数据绑定 |
+| Vue 3 | 3.x | 页面状态管理与组件化交互 |
 | xterm.js | 4.17 | 浏览器终端模拟器 |
 
 ---
@@ -114,6 +114,13 @@ python -m uvicorn apps.api.main:app --host 0.0.0.0 --port 18002
    - `exit` 退出 shell
 5. 关闭页面或点击"返回仪表盘"结束终端会话
 
+### 3.6 查看审计日志
+
+1. 使用管理员账号登录
+2. 在首页点击"审计日志"按钮
+3. 进入独立审计日志页面 `/audit.html`
+4. 查看最近 100 条操作记录、成功/失败统计和详细信息
+
 ---
 
 ## 四、项目结构
@@ -151,8 +158,9 @@ ssh_gateway_project_v2/
 │   ├── config.py       # 全局配置（Pydantic Settings）
 │   └── logger.py       # 日志配置
 ├── web/                # 前端静态页面
-│   ├── index.html      # 仪表盘（登录/注册/隧道管理/MFA）
-│   └── terminal.html   # Web SSH 终端页面（xterm.js）
+│   ├── index.html      # 仪表盘（Vue 3）
+│   ├── audit.html      # 独立审计日志页面
+│   └── terminal.html   # Web SSH 终端页面（Vue 3 + xterm.js）
 ├── requirements.txt    # Python 依赖
 └── CHANGELOG.md        # 本文件
 ```
@@ -160,6 +168,34 @@ ssh_gateway_project_v2/
 ---
 
 ## 五、开发日志
+
+### 2026-05-01：Vue 前端美化 & 审计日志页面拆分
+
+**目标**：提升 Web 管理端可读性和可维护性，减少首页信息密度，把审计日志从首页拆分为独立页面。
+
+**实现内容**：
+
+1. **前端框架迁移**
+   - `web/index.html` 从 Alpine.js 风格重构为 Vue 3 CDN 版本
+   - `web/terminal.html` 同步改为 Vue 3 管理状态和终端连接状态
+   - 保持现有 FastAPI 静态部署方式，不引入前端构建流程
+
+2. **页面视觉美化**
+   - 仪表盘改为渐变导航栏、卡片式布局、统一弹窗样式
+   - 新增 Toast 提示替代原有简单提示方式
+   - 终端页采用深色主题和连接状态指示器
+
+3. **审计日志拆分**
+   - 首页移除大面积审计日志表格
+   - 新增 `web/audit.html` 独立查看日志
+   - 首页仅保留管理员可见的“审计日志”入口按钮
+
+**Bug 修复**：
+
+| # | Bug | 根因 | 修复方案 |
+|---|-----|------|---------|
+| 9 | Web 页面无法显示 | `v-cloak` 挂在 `body` 上，但 Vue 只挂载到 `#app`，导致整个页面一直隐藏 | 将 `v-cloak` 移到 Vue 根节点 `#app` |
+| 10 | 首页信息过载 | 审计日志表格直接嵌在首页，占用过多空间 | 把审计日志改为独立页面展示 |
 
 ### 2026-04-27：Web SSH 终端功能
 
@@ -222,4 +258,4 @@ ssh_gateway_project_v2/
 - ACL 访问控制
 - 审计日志（登录/隧道创建/命令执行）
 - SQLite 持久化存储
-- 基于 TailwindCSS + Alpine.js 的 Web 仪表盘
+- 基于 TailwindCSS + Vue 3 的 Web 仪表盘

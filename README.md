@@ -1,6 +1,6 @@
 # SSH 隧道平台 (SSH Tunnel Platform)
 
-> 一个基于 Python 的高安全、高可扩展的 SSH 隧道控制平台，提供 Web 管理界面和交互式 Web SSH 终端。
+> 一个基于 Python 的高安全、高可扩展的 SSH 隧道控制平台，提供基于 Vue 3 的 Web 管理界面、独立审计日志页和交互式 Web SSH 终端。
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100%2B-009688)](https://fastapi.tiangolo.com/)
@@ -30,8 +30,9 @@
 | 🔐 **认证** | 密码认证、TOTP 两步验证 (MFA)、用户注册 |
 | 🔗 **隧道** | 本地端口转发、SOCKS5 动态代理、远程端口转发 |
 | 🖥️ **Web SSH** | 基于 xterm.js 的交互式 Web 终端，双向实时通信 |
-| 📋 **审计** | 完整的操作审计日志（登录/隧道创建/命令执行） |
+| 📋 **审计** | 完整的操作审计日志（登录/隧道创建/命令执行）+ 独立日志页面 |
 | 🛡️ **权限** | 基于 IP/端口的 ACL 访问控制 |
+| 🎨 **前端** | Vue 3 + TailwindCSS 仪表盘、独立审计日志页、xterm.js 终端 |
 | 🔌 **可扩展** | SSH 后端抽象层，支持多实现；插件化认证系统 |
 
 ---
@@ -50,8 +51,9 @@
 ┌─────────────────────────┐     ┌─────────────────────────────┐
 │      Web 前端 (Static)   │     │      API 接口 (REST/WS)     │
 │  • index.html (仪表盘)   │◄───►│  • FastAPI 路由             │
-│  • terminal.html (终端)  │     │  • WebSocket 终端通道       │
-│  • TailwindCSS + Alpine  │     │  • CORS 跨域支持            │
+│  • audit.html (审计页)   │     │  • WebSocket 终端通道       │
+│  • terminal.html (终端)  │     │  • CORS 跨域支持            │
+│  • TailwindCSS + Vue 3   │     │                             │
 └─────────────────────────┘     └─────────────┬───────────────┘
                                               │
                     ┌─────────────────────────┼─────────────────────────┐
@@ -216,8 +218,9 @@ ssh_gateway_project_v2/
 │   └── exceptions.py         # 异常定义 (预留)
 │
 ├── web/                      # 前端静态页面
-│   ├── index.html            # 仪表盘 (TailwindCSS + Alpine.js)
-│   └── terminal.html         # Web SSH 终端 (xterm.js)
+│   ├── index.html            # 仪表盘 (TailwindCSS + Vue 3)
+│   ├── audit.html            # 独立审计日志页面
+│   └── terminal.html         # Web SSH 终端 (Vue 3 + xterm.js)
 │
 ├── schemas/                  # 数据模型定义（预留）
 ├── scripts/                  # 工具脚本
@@ -305,6 +308,15 @@ python -m uvicorn apps.api.main:app --host 0.0.0.0 --port 18002
 | ✏️ **修改** | 停止旧隧道 + 用新参数重建（支持 SSH 主机/端口/用户名/密码/远程目标/备注） |
 | 🖥️ **终端** | 打开交互式 Web SSH 终端 |
 | 🛑 **停止** | 关闭并移除隧道 |
+
+### 6. 查看审计日志
+
+1. 使用 `admin` 账号登录首页
+2. 点击首页中的 **"审计日志"** 按钮
+3. 跳转到独立页面 `/audit.html`
+4. 查看最近 100 条操作记录和成功/失败统计
+
+审计日志页从首页独立出来，避免管理面板被长表格占满，同时保留管理员访问控制。
 
 ---
 

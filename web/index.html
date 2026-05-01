@@ -25,9 +25,9 @@
         .glow-red { box-shadow: 0 0 12px rgba(239, 68, 68, 0.3); }
     </style>
 </head>
-<body class="bg-slate-50 min-h-screen font-sans antialiased" v-cloak>
+<body class="bg-slate-50 min-h-screen font-sans antialiased">
 
-<div id="app">
+<div id="app" v-cloak>
     <!-- ====== Navbar ====== -->
     <nav class="bg-gradient-to-r from-indigo-600 to-purple-600 shadow-xl sticky top-0 z-30">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -100,7 +100,7 @@
         <transition name="fade">
             <div v-if="isLoggedIn">
                 <!-- Stats Bar -->
-                <div class="grid grid-cols-3 gap-4 mb-8">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
                     <div class="bg-white rounded-2xl shadow-sm border border-slate-200/60 p-5 flex items-center gap-4">
                         <div class="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center">
                             <svg class="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
@@ -119,6 +119,14 @@
                             <span class="text-sm font-medium">刷新数据</span>
                         </button>
                     </div>
+                </div>
+
+                <div v-if="currentUser === 'admin'" class="mb-8">
+                    <a href="/audit.html"
+                        class="inline-flex items-center gap-2 bg-white rounded-2xl shadow-sm border border-slate-200/60 px-5 py-3 text-slate-700 hover:text-indigo-600 hover:border-indigo-200 hover:shadow-md transition-all duration-200 no-underline">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+                        <span class="text-sm font-semibold">审计日志</span>
+                    </a>
                 </div>
 
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -274,45 +282,6 @@
                     </div>
                 </div>
 
-                <!-- ====== Audit Logs (Admin) ====== -->
-                <transition name="slide">
-                    <div v-if="currentUser === 'admin'" class="mt-8 bg-white rounded-2xl shadow-sm border border-slate-200/60 overflow-hidden">
-                        <div class="bg-gradient-to-r from-slate-700 to-slate-600 px-6 py-4 flex justify-between items-center">
-                            <h2 class="text-lg font-bold text-white flex items-center gap-2">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
-                                审计日志
-                            </h2>
-                            <button @click="fetchLogs" class="bg-white/10 hover:bg-white/20 text-white text-xs px-3 py-1.5 rounded-lg transition-colors">刷新</button>
-                        </div>
-                        <div class="overflow-x-auto">
-                            <table class="w-full">
-                                <thead>
-                                    <tr class="bg-slate-50 text-left">
-                                        <th class="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">时间</th>
-                                        <th class="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">用户</th>
-                                        <th class="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">操作</th>
-                                        <th class="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">状态</th>
-                                        <th class="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">详情</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y divide-slate-100">
-                                    <tr v-for="log in logs" :key="log.id" class="hover:bg-slate-50 transition-colors">
-                                        <td class="px-6 py-3 text-xs text-slate-500 whitespace-nowrap">{{ log.timestamp }}</td>
-                                        <td class="px-6 py-3 text-xs font-medium text-slate-700">{{ log.user }}</td>
-                                        <td class="px-6 py-3 text-xs text-slate-500">{{ log.action }}</td>
-                                        <td class="px-6 py-3 whitespace-nowrap">
-                                            <span class="px-2 py-0.5 text-xs font-semibold rounded-full"
-                                                :class="log.status === 'success' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'">
-                                                {{ log.status }}
-                                            </span>
-                                        </td>
-                                        <td class="px-6 py-3 text-xs text-slate-400 max-w-xs truncate">{{ log.details }}</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </transition>
             </div>
         </transition>
     </main>
@@ -497,7 +466,6 @@ createApp({
             isLoggedIn: false,
             currentUser: '',
             tunnels: [],
-            logs: [],
             creating: false,
             showAuth: false,
             authMode: 'login',
@@ -553,7 +521,6 @@ createApp({
                     this.showAuth = false;
                     this.authNeedMfa = false;
                     this.fetchTunnels();
-                    if (this.currentUser === 'admin') this.fetchLogs();
                     this.toast('success', this.authMode === 'login' ? '登录成功！' : '注册成功！');
                 } else if (data.detail === 'MFA_REQUIRED') {
                     this.authNeedMfa = true;
@@ -598,7 +565,6 @@ createApp({
             localStorage.removeItem('token');
             localStorage.removeItem('username');
             this.tunnels = [];
-            this.logs = [];
         },
 
         async fetchTunnels() {
@@ -695,19 +661,6 @@ createApp({
         openEditTunnelModal(tunnel) {
             this.editingTunnel = { ...tunnel };
             this.showEditTunnelModal = true;
-        },
-
-        async fetchLogs() {
-            try {
-                const res = await fetch('/auth/logs', { headers: { 'X-User': this.currentUser } });
-                const data = await res.json();
-                if (res.ok) {
-                    this.logs = data.logs.map(log => ({
-                        ...log,
-                        timestamp: new Date(log.timestamp).toLocaleString()
-                    }));
-                }
-            } catch (e) { console.error(e); }
         }
     },
     mounted() {
@@ -716,7 +669,6 @@ createApp({
             this.isLoggedIn = true;
             this.currentUser = localStorage.getItem('username') || '';
             this.fetchTunnels();
-            if (this.currentUser === 'admin') this.fetchLogs();
         }
     }
 }).mount('#app');
