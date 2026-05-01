@@ -5,122 +5,176 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SSH 终端 - SSH Tunnel Platform</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@4.17.0/css/xterm.css" />
     <script src="https://cdn.jsdelivr.net/npm/xterm@4.17.0/lib/xterm.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.5.0/lib/xterm-addon-fit.js"></script>
     <style>
-        body {
-            background-color: #0c0c0c; /* Dark background like Windows Terminal */
-            color: #cccccc;
-        }
-        #terminal-container {
-            width: 100%;
-            height: 600px; /* Fixed height for xterm.js */
-            background-color: #0c0c0c;
-            border-radius: 0.5rem;
-            overflow: hidden; /* Ensure xterm.js content stays within bounds */
-        }
-        .xterm .xterm-viewport {
-            overflow-y: auto;
-        }
+        [v-cloak] { display: none !important; }
+        body { background: #0d1117; font-family: 'Inter', system-ui, sans-serif; }
+        #terminal-container { width: 100%; height: calc(100vh - 140px); background: #0d1117; border-radius: 16px; overflow: hidden; border: 1px solid #30363d; }
+        .xterm .xterm-viewport { overflow-y: auto; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+        .status-dot.connected { background: #3fb950; box-shadow: 0 0 8px rgba(63,185,80,0.5); }
+        .status-dot.disconnected { background: #f85149; box-shadow: 0 0 8px rgba(248,81,73,0.5); }
+        .status-dot.connecting { background: #d29922; box-shadow: 0 0 8px rgba(210,153,34,0.5); animation: pulse-dot 1.5s infinite; }
+        @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:0.3} }
     </style>
 </head>
-<body class="bg-gray-900 min-h-screen text-white p-8" x-data="terminalApp()">
-    <div class="max-w-4xl mx-auto">
-        <div class="flex justify-between items-center mb-6">
-            <div>
-                <h1 class="text-2xl font-bold text-indigo-400">远程终端</h1>
-                <p class="text-gray-400 text-sm">隧道 ID: <span class="text-indigo-300" x-text="tunnelId"></span></p>
+<body class="min-h-screen text-[#c9d1d9]" v-cloak>
+
+<div id="app">
+    <div class="max-w-5xl mx-auto px-6 py-5">
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-4">
+                <div class="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
+                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold text-[#e6edf3]">远程终端</h1>
+                    <p class="text-xs text-[#8b949e]">
+                        隧道 <code class="text-[#79c0ff] bg-[#161b22] px-1.5 py-0.5 rounded text-xs">{{ tunnelId }}</code>
+                    </p>
+                </div>
             </div>
-            <a href="/" class="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded text-sm transition">返回仪表盘</a>
+            <div class="flex items-center gap-4">
+                <!-- Status Indicator -->
+                <div class="flex items-center gap-2 text-xs">
+                    <span class="status-dot" :class="statusClass"></span>
+                    <span class="text-[#8b949e]">{{ statusText }}</span>
+                </div>
+                <a href="/" class="bg-[#21262d] hover:bg-[#30363d] text-[#c9d1d9] border border-[#30363d] px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 no-underline hover:text-white">
+                    ← 返回仪表盘
+                </a>
+            </div>
         </div>
 
-        <div id="terminal-container" class="terminal-output shadow-2xl mb-4"></div>
-        
-        <div class="mt-4 text-gray-500 text-xs text-center">
-            提示：这是一个交互式 SSH 终端，支持大部分终端操作。
+        <!-- Terminal -->
+        <div id="terminal-container" class="shadow-2xl"></div>
+
+        <!-- Footer -->
+        <div class="mt-4 text-center text-xs text-[#484f58]">
+            交互式 SSH 终端 · 支持彩色输出 · <kbd class="bg-[#21262d] border border-[#30363d] px-1.5 py-0.5 rounded text-[#8b949e]">Ctrl+C</kbd> 中断命令 · <kbd class="bg-[#21262d] border border-[#30363d] px-1.5 py-0.5 rounded text-[#8b949e]">exit</kbd> 退出
         </div>
     </div>
+</div>
 
-    <script>
-        function terminalApp() {
-            return {
-                tunnelId: new URLSearchParams(window.location.search).get('tid'),
-                currentUser: localStorage.getItem('username') || 'user',
-                term: null,
-                fitAddon: null,
-                websocket: null,
-                API_BASE: '',
+<script>
+const { createApp } = Vue;
 
-                async init() {
-                    // Wait for XTerm and FitAddon to be available
-                    let attempts = 0;
-                    while ((!window.Terminal || !window.FitAddon) && attempts < 10) {
-                        await new Promise(r => setTimeout(r, 100));
-                        attempts++;
-                    }
-
-                    if (!window.Terminal) {
-                        console.error('XTerm not loaded');
-                        return;
-                    }
-
-                    this.term = new Terminal({
-                        fontSize: 14,
-                        fontFamily: 'Consolas, "Courier New", monospace',
-                        theme: {
-                            background: '#1a1a1a',
-                            foreground: '#00ff00',
-                            cursor: '#00ff00',
-                            selection: 'rgba(0, 255, 0, 0.3)'
-                        }
-                    });
-                    if (window.FitAddon) {
-                        this.fitAddon = new window.FitAddon.FitAddon();
-                        this.term.loadAddon(this.fitAddon);
-                    }
-                    this.term.open(document.getElementById('terminal-container'));
-                    if (this.fitAddon) this.fitAddon.fit();
-
-                    window.addEventListener('resize', () => {
-                        this.fitAddon.fit();
-                    });
-
-                    this.connectWebSocket();
-
-                    this.term.onData(data => {
-                        if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
-                            this.websocket.send(data);
-                        }
-                    });
-                },
-
-                connectWebSocket() {
-                    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                    this.websocket = new WebSocket(`${wsProtocol}//${window.location.host}/tunnel/ws/terminal/${this.tunnelId}?user=${encodeURIComponent(this.currentUser)}`);
-
-                    this.websocket.onopen = () => {
-                        this.term.write('\x1b[32mConnected to SSH tunnel terminal.\x1b[0m\r\n');
-                        this.term.focus();
-                    };
-
-                    this.websocket.onmessage = event => {
-                        this.term.write(event.data);
-                    };
-
-                    this.websocket.onclose = () => {
-                        this.term.write('\r\n\x1b[31mDisconnected from SSH tunnel terminal.\x1b[0m\r\n');
-                        this.term.blur();
-                    };
-
-                    this.websocket.onerror = error => {
-                        this.term.write('\r\n\x1b[31mWebSocket error: ' + error.message + '\x1b[0m\r\n');
-                        console.error('WebSocket error:', error);
-                    };
-                }
-            }
+createApp({
+    data() {
+        return {
+            tunnelId: new URLSearchParams(window.location.search).get('tid') || '',
+            currentUser: localStorage.getItem('username') || 'user',
+            connectionStatus: 'connecting',
+            term: null,
+            fitAddon: null,
+            ws: null
+        };
+    },
+    computed: {
+        statusClass() {
+            return { connected: 'connected', disconnected: 'disconnected', connecting: 'connecting' }[this.connectionStatus] || 'disconnected';
+        },
+        statusText() {
+            return { connected: '已连接', disconnected: '已断开', connecting: '连接中...' }[this.connectionStatus] || '已断开';
         }
-    </script>
+    },
+    methods: {
+        async initTerminal() {
+            let retries = 0;
+            while ((!window.Terminal || !window.FitAddon) && retries < 20) {
+                await new Promise(r => setTimeout(r, 100));
+                retries++;
+            }
+            if (!window.Terminal) return;
+
+            this.term = new Terminal({
+                fontSize: 14,
+                fontFamily: '"Cascadia Code", "Fira Code", "JetBrains Mono", Consolas, monospace',
+                cursorBlink: true,
+                cursorStyle: 'bar',
+                theme: {
+                    background: '#0d1117',
+                    foreground: '#c9d1d9',
+                    cursor: '#58a6ff',
+                    cursorAccent: '#0d1117',
+                    selection: 'rgba(56,139,253,0.3)',
+                    black: '#484f58',
+                    red: '#f85149',
+                    green: '#3fb950',
+                    yellow: '#d29922',
+                    blue: '#58a6ff',
+                    magenta: '#bc8cff',
+                    cyan: '#39c5cf',
+                    white: '#b1bac4',
+                    brightBlack: '#6e7681',
+                    brightRed: '#ff7b72',
+                    brightGreen: '#56d364',
+                    brightYellow: '#e3b341',
+                    brightBlue: '#79c0ff',
+                    brightMagenta: '#d2a8ff',
+                    brightCyan: '#56d4dd',
+                    brightWhite: '#f0f6fc'
+                }
+            });
+
+            if (window.FitAddon) {
+                this.fitAddon = new window.FitAddon.FitAddon();
+                this.term.loadAddon(this.fitAddon);
+            }
+
+            this.term.open(document.getElementById('terminal-container'));
+            if (this.fitAddon) this.fitAddon.fit();
+            window.addEventListener('resize', () => this.fitAddon?.fit());
+
+            this.term.onData(data => {
+                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                    this.ws.send(data);
+                }
+            });
+
+            this.connectWebSocket();
+        },
+
+        connectWebSocket() {
+            this.connectionStatus = 'connecting';
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const url = `${protocol}//${window.location.host}/tunnel/ws/terminal/${this.tunnelId}?user=${encodeURIComponent(this.currentUser)}`;
+
+            this.ws = new WebSocket(url);
+
+            this.ws.onopen = () => {
+                this.connectionStatus = 'connected';
+                this.term.write('\x1b[1;32m✓ 已连接到 SSH 隧道终端\x1b[0m\r\n\r\n');
+                this.term.focus();
+            };
+
+            this.ws.onmessage = event => {
+                this.term.write(event.data);
+            };
+
+            this.ws.onclose = () => {
+                this.connectionStatus = 'disconnected';
+                this.term.write('\r\n\x1b[1;31m✗ 与 SSH 隧道终端的连接已断开\x1b[0m\r\n');
+            };
+
+            this.ws.onerror = () => {
+                this.connectionStatus = 'disconnected';
+                this.term.write('\r\n\x1b[1;31m✗ WebSocket 连接错误\x1b[0m\r\n');
+            };
+        }
+    },
+    mounted() {
+        this.initTerminal();
+    },
+    unmounted() {
+        this.ws?.close();
+        this.term?.dispose();
+    }
+}).mount('#app');
+</script>
 </body>
 </html>

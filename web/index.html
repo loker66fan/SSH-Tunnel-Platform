@@ -3,586 +3,723 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SSH Tunnel Platform - 仪表盘</title>
+    <title>SSH Tunnel Platform</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
     <style>
-        [x-cloak] { display: none !important; }
+        [v-cloak] { display: none !important; }
+        .fade-enter-active, .fade-leave-active { transition: opacity 0.25s ease; }
+        .fade-enter-from, .fade-leave-to { opacity: 0; }
+        .modal-enter-active, .modal-leave-active { transition: all 0.3s ease; }
+        .modal-enter-from, .modal-leave-to { opacity: 0; transform: scale(0.95); }
+        .slide-enter-active, .slide-leave-active { transition: all 0.3s ease; }
+        .slide-enter-from { opacity: 0; transform: translateY(-10px); }
+        .slide-leave-to { opacity: 0; transform: translateY(10px); }
+        .pulse-dot { animation: pulse-dot 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        .toast-enter-active { transition: all 0.3s ease; }
+        .toast-leave-active { transition: all 0.2s ease; }
+        .toast-enter-from { opacity: 0; transform: translateX(100px); }
+        .toast-leave-to { opacity: 0; transform: translateX(100px); }
+        .glow-green { box-shadow: 0 0 12px rgba(34, 197, 94, 0.3); }
+        .glow-red { box-shadow: 0 0 12px rgba(239, 68, 68, 0.3); }
     </style>
 </head>
-<body class="bg-gray-100 min-h-screen" x-data="tunnelApp()">
-    <nav class="bg-indigo-600 text-white shadow-lg">
+<body class="bg-slate-50 min-h-screen font-sans antialiased" v-cloak>
+
+<div id="app">
+    <!-- ====== Navbar ====== -->
+    <nav class="bg-gradient-to-r from-indigo-600 to-purple-600 shadow-xl sticky top-0 z-30">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex items-center justify-between h-16">
-                <div class="flex items-center">
-                    <span class="text-xl font-bold">SSH Tunnel Platform</span>
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur">
+                        <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                    </div>
+                    <span class="text-xl font-bold text-white tracking-tight">SSH Tunnel Platform</span>
                 </div>
-                <div class="flex items-center space-x-4">
-                    <template x-if="!isLoggedIn">
-                        <button @click="showLogin = true" class="bg-indigo-500 hover:bg-indigo-400 px-3 py-2 rounded-md text-sm font-medium">登录</button>
+                <div class="flex items-center gap-3">
+                    <template v-if="!isLoggedIn">
+                        <button @click="openLogin"
+                            class="bg-white/10 hover:bg-white/20 backdrop-blur text-white px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 hover:scale-105">
+                            登录
+                        </button>
                     </template>
-                    <template x-if="isLoggedIn">
-                        <div class="flex items-center space-x-4">
-                            <span x-text="currentUser" class="text-sm"></span>
-                            <button @click="setupMfa" class="text-xs bg-indigo-700 hover:bg-indigo-800 px-2 py-1 rounded">启用 MFA</button>
-                            <button @click="logout" class="bg-indigo-500 hover:bg-indigo-400 px-3 py-2 rounded-md text-sm font-medium">退出</button>
-                        </div>
+                    <template v-if="isLoggedIn">
+                        <span class="text-white/80 text-sm font-medium bg-white/10 px-3 py-1.5 rounded-lg">{{ currentUser }}</span>
+                        <button @click="setupMfa"
+                            class="text-xs bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded-lg transition-all duration-200">
+                            🔐 MFA
+                        </button>
+                        <button @click="logout"
+                            class="bg-white/10 hover:bg-red-400/80 text-white px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200">
+                            退出
+                        </button>
                     </template>
                 </div>
             </div>
         </div>
     </nav>
 
-    <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <!-- Login Modal -->
-        <div x-show="showLogin" class="fixed z-10 inset-0 overflow-y-auto" x-cloak>
-            <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-                <div class="fixed inset-0 transition-opacity" aria-hidden="true">
-                    <div class="absolute inset-0 bg-gray-500 opacity-75"></div>
+    <!-- ====== Toast Notifications ====== -->
+    <div class="fixed top-5 right-5 z-50 flex flex-col gap-2" style="max-width:380px">
+        <transition-group name="toast">
+            <div v-for="toast in toasts" :key="toast.id"
+                :class="toast.type === 'success' ? 'bg-emerald-500' : toast.type === 'error' ? 'bg-red-500' : 'bg-blue-500'"
+                class="text-white px-5 py-3 rounded-xl shadow-2xl flex items-center gap-3 text-sm backdrop-blur">
+                <span>{{ toast.type === 'success' ? '✅' : toast.type === 'error' ? '❌' : 'ℹ️' }}</span>
+                <span class="flex-1">{{ toast.message }}</span>
+                <button @click="removeToast(toast.id)" class="text-white/70 hover:text-white text-lg leading-none">&times;</button>
+            </div>
+        </transition-group>
+    </div>
+
+    <main class="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+        <!-- ====== Welcome Screen ====== -->
+        <transition name="fade">
+            <div v-if="!isLoggedIn" class="flex flex-col items-center justify-center py-24 text-center">
+                <div class="w-24 h-24 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-3xl flex items-center justify-center mb-8 shadow-2xl shadow-indigo-500/30">
+                    <svg class="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
                 </div>
-                <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
-                    <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
-                        <h3 class="text-lg leading-6 font-medium text-gray-900">登录</h3>
-                        <div class="mt-4 space-y-4">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700">用户名</label>
-                                <input type="text" x-model="loginForm.username" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700">密码</label>
-                                <input type="password" x-model="loginForm.password" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
-                            </div>
-                            <div x-show="mfaRequired">
-                                <label class="block text-sm font-medium text-gray-700 text-indigo-600">MFA 验证码</label>
-                                <input type="text" x-model="loginForm.mfa_code" placeholder="6位数字" class="mt-1 block w-full border-2 border-indigo-300 rounded-md shadow-sm p-2">
-                                <p class="text-xs text-gray-500 mt-1">该账户已启用双重认证，请输入验证码。</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
-                        <button @click="login" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 sm:ml-3 sm:w-auto sm:text-sm">登录</button>
-                        <button @click="showLogin = false" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">取消</button>
-                    </div>
+                <h1 class="text-5xl font-black text-slate-800 mb-4 tracking-tight">SSH 隧道管理平台</h1>
+                <p class="text-xl text-slate-500 mb-10 max-w-lg">安全、高效、可扩展的 SSH 隧道解决方案</p>
+                <div class="flex gap-4">
+                    <button @click="openLogin"
+                        class="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-8 py-3.5 rounded-2xl font-bold text-lg shadow-xl shadow-indigo-500/30 hover:shadow-2xl hover:scale-105 transition-all duration-200">
+                        立即开始
+                    </button>
+                    <button @click="openRegister"
+                        class="bg-white text-slate-600 border-2 border-slate-200 px-8 py-3.5 rounded-2xl font-bold text-lg hover:border-indigo-300 hover:text-indigo-600 transition-all duration-200">
+                        注册账号
+                    </button>
                 </div>
             </div>
-        </div>
+        </transition>
 
-        <!-- MFA Setup Modal -->
-        <div x-show="showMfaSetup" class="fixed z-10 inset-0 overflow-y-auto" x-cloak>
-            <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-                <div class="fixed inset-0 transition-opacity" aria-hidden="true">
-                    <div class="absolute inset-0 bg-gray-500 opacity-75"></div>
-                </div>
-                <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
-                    <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
-                        <h3 class="text-lg leading-6 font-medium text-gray-900">配置多因素认证 (MFA)</h3>
-                        <div class="mt-4 text-center">
-                            <p class="text-sm text-gray-500 mb-4">请使用 Google Authenticator 或 Microsoft Authenticator 扫描下方二维码</p>
-                            <div class="flex justify-center mb-4">
-                                <img :src="mfaData.qr_code" alt="MFA QR Code" class="border p-2 bg-white">
-                            </div>
-                            <div class="bg-gray-100 p-3 rounded text-sm break-all mb-4">
-                                <p class="font-bold text-gray-700">手动输入密钥:</p>
-                                <code x-text="mfaData.secret" class="text-indigo-600"></code>
-                            </div>
-                            <div class="mt-4">
-                                <label class="block text-sm font-medium text-gray-700 mb-1">输入验证码以验证</label>
-                                <input type="text" x-model="mfaVerifyCode" placeholder="6位数字" class="block w-full border border-gray-300 rounded-md shadow-sm p-2 text-center text-lg tracking-widest">
-                            </div>
-                            <p class="mt-4 text-xs text-red-500 font-bold">请务必保存好您的密钥，丢失将无法找回！</p>
+        <!-- ====== Dashboard ====== -->
+        <transition name="fade">
+            <div v-if="isLoggedIn">
+                <!-- Stats Bar -->
+                <div class="grid grid-cols-3 gap-4 mb-8">
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-200/60 p-5 flex items-center gap-4">
+                        <div class="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center">
+                            <svg class="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
                         </div>
+                        <div><p class="text-2xl font-bold text-slate-800">{{ tunnels.length }}</p><p class="text-xs text-slate-500">活动隧道</p></div>
                     </div>
-                    <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
-                        <button @click="verifyMfaSetup" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 sm:ml-3 sm:w-auto sm:text-sm">验证并启用</button>
-                        <button @click="showMfaSetup = false" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">取消</button>
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-200/60 p-5 flex items-center gap-4">
+                        <div class="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
+                            <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+                        </div>
+                        <div><p class="text-xl font-bold text-slate-800">{{ currentUser }}</p><p class="text-xs text-slate-500">当前用户</p></div>
+                    </div>
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-200/60 p-5 flex items-center gap-4">
+                        <button @click="fetchTunnels" class="w-full flex items-center gap-3 text-slate-600 hover:text-indigo-600 transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                            <span class="text-sm font-medium">刷新数据</span>
+                        </button>
                     </div>
                 </div>
-            </div>
-        </div>
 
-        <!-- Edit Tunnel Modal -->
-        <div x-show="showEditTunnelModal" class="fixed z-10 inset-0 overflow-y-auto" x-cloak>
-            <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-                <div class="fixed inset-0 transition-opacity" aria-hidden="true">
-                    <div class="absolute inset-0 bg-gray-500 opacity-75"></div>
-                </div>
-                <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
-                    <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
-                        <h3 class="text-lg leading-6 font-medium text-gray-900">编辑隧道</h3>
-                        <div class="mt-4 space-y-4">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <!-- ====== Create Tunnel Card ====== -->
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-200/60 overflow-hidden">
+                        <div class="bg-gradient-to-r from-indigo-500 to-purple-500 px-6 py-4">
+                            <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+                                新建隧道
+                            </h2>
+                        </div>
+                        <div class="p-6 space-y-4">
                             <div>
-                                <label class="block text-sm font-medium text-gray-700">隧道 ID</label>
-                                <input type="text" x-model="editingTunnel.id" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-gray-100" readonly>
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700">SSH 主机</label>
-                                <input type="text" x-model="editingTunnel.ssh_host" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700">SSH 端口</label>
-                                <input type="number" x-model="editingTunnel.ssh_port" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700">SSH 用户名</label>
-                                <input type="text" x-model="editingTunnel.username" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700">SSH 密码</label>
-                                <input type="password" x-model="editingTunnel.password" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700">类型</label>
-                                <input type="text" x-model="editingTunnel.type" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-gray-100" readonly>
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700">本地监听端口</label>
-                                <input type="number" x-model="editingTunnel.local_port" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 bg-gray-100" readonly>
-                            </div>
-                            <template x-if="editingTunnel.type === 'local'">
-                                <div class="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label class="block text-sm font-medium text-gray-700">远程主机</label>
-                                        <input type="text" x-model="editingTunnel.remote_host" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
-                                    </div>
-                                    <div>
-                                        <label class="block text-sm font-medium text-gray-700">远程端口</label>
-                                        <input type="number" x-model="editingTunnel.remote_port" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
-                                    </div>
+                                <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">隧道类型</label>
+                                <div class="flex gap-2">
+                                    <button @click="tunnelForm.type = 'local'"
+                                        :class="tunnelForm.type === 'local' ? 'bg-indigo-50 border-indigo-400 text-indigo-700' : 'bg-slate-50 border-slate-200 text-slate-500'"
+                                        class="flex-1 border-2 rounded-xl py-2.5 text-sm font-medium transition-all duration-200">
+                                        📡 本地转发
+                                    </button>
+                                    <button @click="tunnelForm.type = 'socks5'"
+                                        :class="tunnelForm.type === 'socks5' ? 'bg-indigo-50 border-indigo-400 text-indigo-700' : 'bg-slate-50 border-slate-200 text-slate-500'"
+                                        class="flex-1 border-2 rounded-xl py-2.5 text-sm font-medium transition-all duration-200">
+                                        🧦 SOCKS5
+                                    </button>
                                 </div>
-                            </template>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700">备注</label>
-                                <input type="text" x-model="editingTunnel.remark" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
                             </div>
-                        </div>
-                    </div>
-                    <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
-                        <button @click="saveEditedTunnel" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 sm:ml-3 sm:w-auto sm:text-sm">保存</button>
-                        <button @click="showEditTunnelModal = false" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">取消</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Dashboard -->
-        <div x-show="isLoggedIn" x-cloak>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <!-- Create Tunnel -->
-                <div class="bg-white shadow rounded-lg p-6">
-                    <h2 class="text-xl font-semibold mb-4 text-gray-800">新建隧道</h2>
-                    <div class="space-y-4">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700">类型</label>
-                            <select x-model="tunnelForm.type" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
-                                <option value="local">本地端口转发 (Local)</option>
-                                <option value="socks5">动态 SOCKS5 代理</option>
-                            </select>
-                        </div>
-                        <div class="grid grid-cols-2 gap-4">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700">SSH 主机</label>
-                                <input type="text" x-model="tunnelForm.ssh_host" placeholder="127.0.0.1" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700">SSH 端口</label>
-                                <input type="number" x-model="tunnelForm.ssh_port" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
-                            </div>
-                        </div>
-                        <div class="grid grid-cols-2 gap-4">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700">SSH 用户名</label>
-                                <input type="text" x-model="tunnelForm.username" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700">SSH 密码</label>
-                                <input type="password" x-model="tunnelForm.password" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
-                            </div>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700">本地监听端口</label>
-                            <input type="number" x-model="tunnelForm.local_port" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700">备注</label>
-                            <input type="text" x-model="tunnelForm.remark" placeholder="例如: 服务器1, 我的测试服务器" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
-                        </div>
-                        <template x-if="tunnelForm.type === 'local'">
-                            <div class="grid grid-cols-2 gap-4">
+                            <div class="grid grid-cols-2 gap-3">
                                 <div>
-                                    <label class="block text-sm font-medium text-gray-700">远程主机</label>
-                                    <input type="text" x-model="tunnelForm.remote_host" placeholder="127.0.0.1" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                                    <label class="block text-xs font-semibold text-slate-500 mb-1">SSH 主机</label>
+                                    <input v-model="tunnelForm.ssh_host" placeholder="192.168.1.1"
+                                        class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 outline-none transition-all">
                                 </div>
                                 <div>
-                                    <label class="block text-sm font-medium text-gray-700">远程端口</label>
-                                    <input type="number" x-model="tunnelForm.remote_port" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                                    <label class="block text-xs font-semibold text-slate-500 mb-1">SSH 端口</label>
+                                    <input v-model.number="tunnelForm.ssh_port" type="number"
+                                        class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 outline-none transition-all">
                                 </div>
                             </div>
-                        </template>
-                        <button @click="createTunnel" class="w-full bg-indigo-600 text-white py-2 rounded-md hover:bg-indigo-700 transition duration-150">创建隧道</button>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-500 mb-1">用户名</label>
+                                    <input v-model="tunnelForm.username"
+                                        class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 outline-none transition-all">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-500 mb-1">密码</label>
+                                    <input v-model="tunnelForm.password" type="password"
+                                        class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 outline-none transition-all">
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-500 mb-1">本地监听端口</label>
+                                    <input v-model.number="tunnelForm.local_port" type="number"
+                                        class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 outline-none transition-all">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-500 mb-1">备注</label>
+                                    <input v-model="tunnelForm.remark" placeholder="我的服务器"
+                                        class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 outline-none transition-all">
+                                </div>
+                            </div>
+                            <transition name="slide">
+                                <div v-if="tunnelForm.type === 'local'" class="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label class="block text-xs font-semibold text-slate-500 mb-1">远程主机</label>
+                                        <input v-model="tunnelForm.remote_host" placeholder="127.0.0.1"
+                                            class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 outline-none transition-all">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-semibold text-slate-500 mb-1">远程端口</label>
+                                        <input v-model.number="tunnelForm.remote_port" type="number"
+                                            class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 outline-none transition-all">
+                                    </div>
+                                </div>
+                            </transition>
+                            <button @click="createTunnel" :disabled="creating"
+                                class="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-3 rounded-xl font-bold text-sm hover:shadow-lg hover:scale-[1.02] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed">
+                                {{ creating ? '⏳ 创建中...' : '🚀 创建隧道' }}
+                            </button>
+                        </div>
                     </div>
-                </div>
 
-                <!-- Active Tunnels -->
-                <div class="bg-white shadow rounded-lg p-6">
-                    <div class="flex justify-between items-center mb-4">
-                        <h2 class="text-xl font-semibold text-gray-800">活动隧道</h2>
-                        <button @click="fetchTunnels" class="text-indigo-600 hover:text-indigo-800 text-sm font-medium">刷新</button>
-                    </div>
-                    <div class="overflow-hidden">
-                        <ul class="divide-y divide-gray-200">
-                            <template x-for="tunnel in tunnels" :key="tunnel.id">
-                                <li class="py-4 flex justify-between items-center">
-                                    <div class="flex items-center">
-                                        <div class="h-8 w-8 rounded-full flex items-center justify-center"
-                                             :class="tunnel.verified === 'loading' ? 'bg-yellow-100' : (tunnel.verified === false ? 'bg-red-100' : 'bg-green-100')">
-                                            <svg class="h-5 w-5" :class="tunnel.verified === 'loading' ? 'text-yellow-500 animate-pulse' : (tunnel.verified === false ? 'text-red-600' : 'text-green-600')" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
-                                            </svg>
+                    <!-- ====== Active Tunnels Card ====== -->
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-200/60 overflow-hidden">
+                        <div class="bg-gradient-to-r from-emerald-500 to-teal-500 px-6 py-4 flex justify-between items-center">
+                            <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                                活动隧道
+                            </h2>
+                            <span class="bg-white/20 text-white text-xs px-2.5 py-1 rounded-full font-bold">{{ tunnels.length }}</span>
+                        </div>
+                        <div class="divide-y divide-slate-100">
+                            <transition-group name="slide" tag="ul">
+                                <li v-for="tunnel in tunnels" :key="tunnel.id"
+                                    class="px-6 py-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
+                                    <div class="flex items-center gap-4 min-w-0">
+                                        <!-- Status Icon -->
+                                        <div class="relative flex-shrink-0">
+                                            <div class="w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300"
+                                                :class="statusClass(tunnel)">
+                                                <svg class="w-5 h-5 transition-all duration-300" :class="statusIconClass(tunnel)" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path v-if="tunnel.verified === 'loading'" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                                                    <path v-else stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                        d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                                                </svg>
+                                            </div>
+                                            <span v-if="tunnel.verified === 'loading'" class="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-yellow-400 rounded-full pulse-dot"></span>
                                         </div>
-                                        <div class="ml-3">
-                                             <p class="text-sm font-medium text-gray-900" x-text="tunnel.remark || (tunnel.id.substring(0,8) + '...')"></p>
-                                             <p class="text-xs text-gray-500" x-text="'Port: ' + tunnel.local_port + ' (' + tunnel.type + ')'"></p>
-                                         </div>
+                                        <div class="min-w-0">
+                                            <p class="text-sm font-semibold text-slate-800 truncate">{{ tunnel.remark || tunnel.id.substring(0,8) + '...' }}</p>
+                                            <p class="text-xs text-slate-400 mt-0.5">
+                                                <span class="inline-flex items-center gap-1">
+                                                    <span class="w-1.5 h-1.5 rounded-full"
+                                                        :class="tunnel.type === 'socks5' ? 'bg-purple-400' : 'bg-blue-400'"></span>
+                                                    :{{ tunnel.local_port }} ({{ tunnel.type }})
+                                                </span>
+                                            </p>
+                                        </div>
                                     </div>
-                                    <div class="flex space-x-2">
-                                        <button @click="verifyTunnel(tunnel)" class="text-green-600 hover:text-green-800 text-sm font-medium">验证</button>
-                                        <button @click="openEditTunnelModal(tunnel)" class="text-blue-600 hover:text-blue-800 text-sm font-medium">修改</button>
-                                        <a :href="'/terminal.html?tid=' + tunnel.id" target="_blank" class="text-indigo-600 hover:text-indigo-800 text-sm font-medium">终端</a>
-                                        <button @click="stopTunnel(tunnel.id)" class="text-red-600 hover:text-red-800 text-sm font-medium">停止</button>
+                                    <div class="flex items-center gap-1 flex-shrink-0 ml-4">
+                                        <button @click="verifyTunnel(tunnel)"
+                                            :disabled="tunnel.verified === 'loading'"
+                                            class="px-2.5 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 hover:scale-105 disabled:opacity-50"
+                                            :class="tunnel.verified === false ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'">
+                                            {{ tunnel.verified === 'loading' ? '⏳' : '验证' }}
+                                        </button>
+                                        <button @click="openEditTunnelModal(tunnel)"
+                                            class="px-2.5 py-1.5 text-xs font-medium rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-all duration-200 hover:scale-105">
+                                            修改
+                                        </button>
+                                        <a :href="'/terminal.html?tid=' + tunnel.id" target="_blank"
+                                            class="px-2.5 py-1.5 text-xs font-medium rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-all duration-200 hover:scale-105 no-underline">
+                                            终端
+                                        </a>
+                                        <button @click="stopTunnel(tunnel.id)"
+                                            class="px-2.5 py-1.5 text-xs font-medium rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition-all duration-200 hover:scale-105">
+                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                                        </button>
                                     </div>
                                 </li>
-                            </template>
-                            <template x-if="tunnels.length === 0">
-                                <li class="py-4 text-center text-gray-500 text-sm">暂无活动隧道</li>
-                            </template>
-                        </ul>
+                            </transition-group>
+                            <li v-if="tunnels.length === 0" class="px-6 py-16 text-center">
+                                <div class="text-slate-300 mb-3">
+                                    <svg class="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/></svg>
+                                </div>
+                                <p class="text-slate-400 text-sm font-medium">暂无活动隧道</p>
+                                <p class="text-slate-300 text-xs mt-1">创建你的第一个 SSH 隧道吧</p>
+                            </li>
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            <!-- Audit Logs (Admin) -->
-            <div class="mt-8 bg-white shadow rounded-lg p-6" x-show="currentUser === 'admin'">
-                <div class="flex justify-between items-center mb-4">
-                    <h2 class="text-xl font-semibold text-gray-800">审计日志</h2>
-                    <button @click="fetchLogs" class="text-indigo-600 hover:text-indigo-800 text-sm font-medium">刷新</button>
-                </div>
-                <div class="overflow-x-auto">
-                    <table class="min-w-full divide-y divide-gray-200">
-                        <thead class="bg-gray-50">
-                            <tr>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">时间</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">用户</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">状态</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">详情</th>
-                            </tr>
-                        </thead>
-                        <tbody class="bg-white divide-y divide-gray-200">
-                            <template x-for="log in logs" :key="log.id">
-                                <tr>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" x-text="log.timestamp"></td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900" x-text="log.user"></td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" x-text="log.action"></td>
-                                    <td class="px-6 py-4 whitespace-nowrap">
-                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full" 
-                                              :class="log.status === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'"
-                                              x-text="log.status"></span>
-                                    </td>
-                                    <td class="px-6 py-4 text-sm text-gray-500" x-text="log.details"></td>
-                                </tr>
-                            </template>
-                        </tbody>
-                    </table>
-                </div>
+                <!-- ====== Audit Logs (Admin) ====== -->
+                <transition name="slide">
+                    <div v-if="currentUser === 'admin'" class="mt-8 bg-white rounded-2xl shadow-sm border border-slate-200/60 overflow-hidden">
+                        <div class="bg-gradient-to-r from-slate-700 to-slate-600 px-6 py-4 flex justify-between items-center">
+                            <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+                                审计日志
+                            </h2>
+                            <button @click="fetchLogs" class="bg-white/10 hover:bg-white/20 text-white text-xs px-3 py-1.5 rounded-lg transition-colors">刷新</button>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full">
+                                <thead>
+                                    <tr class="bg-slate-50 text-left">
+                                        <th class="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">时间</th>
+                                        <th class="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">用户</th>
+                                        <th class="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">操作</th>
+                                        <th class="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">状态</th>
+                                        <th class="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">详情</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100">
+                                    <tr v-for="log in logs" :key="log.id" class="hover:bg-slate-50 transition-colors">
+                                        <td class="px-6 py-3 text-xs text-slate-500 whitespace-nowrap">{{ log.timestamp }}</td>
+                                        <td class="px-6 py-3 text-xs font-medium text-slate-700">{{ log.user }}</td>
+                                        <td class="px-6 py-3 text-xs text-slate-500">{{ log.action }}</td>
+                                        <td class="px-6 py-3 whitespace-nowrap">
+                                            <span class="px-2 py-0.5 text-xs font-semibold rounded-full"
+                                                :class="log.status === 'success' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'">
+                                                {{ log.status }}
+                                            </span>
+                                        </td>
+                                        <td class="px-6 py-3 text-xs text-slate-400 max-w-xs truncate">{{ log.details }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </transition>
             </div>
-        </div>
-
-        <div x-show="!isLoggedIn" class="text-center py-20" x-cloak>
-            <h1 class="text-4xl font-extrabold text-gray-900 mb-4">欢迎使用 SSH 隧道管理平台</h1>
-            <p class="text-xl text-gray-600 mb-8">安全、高效、可扩展的 SSH 隧道解决方案</p>
-            <button @click="showLogin = true" class="bg-indigo-600 text-white px-8 py-3 rounded-md font-bold text-lg hover:bg-indigo-700">立即开始</button>
-        </div>
+        </transition>
     </main>
 
-    <script>
-        function tunnelApp() {
-            return {
-                isLoggedIn: false,
-                showLogin: false,
-                mfaRequired: false,
-                showMfaSetup: false,
-                mfaData: { secret: '', qr_code: '' },
-                mfaVerifyCode: '',
-                currentUser: '',
-                tunnels: [],
-                logs: [],
-                showEditTunnelModal: false,
-                editingTunnel: {
-                    id: '',
-                    ssh_host: '',
-                    ssh_port: 22,
-                    username: '',
-                    password: '',
-                    local_port: 0,
-                    remote_host: '',
-                    remote_port: 0,
-                    type: '',
-                    remark: ''
-                },
-                loginForm: {
-                    username: '',
-                    password: '',
-                    mfa_code: ''
-                },
-                tunnelForm: {
-                    type: 'local',
-                    ssh_host: '127.0.0.1',
-                    ssh_port: 22,
-                    username: 'user',
-                    password: 'password',
-                    local_port: 8080,
-                    remote_host: '127.0.0.1',
-                    remote_port: 80,
-                    remark: ''
-                },
-                API_BASE: '', // Current origin
+    <!-- ====== Login/Register Modal ====== -->
+    <transition name="modal">
+        <div v-if="showAuth" class="fixed inset-0 z-50 flex items-center justify-center p-4" @click.self="showAuth = false">
+            <div class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm"></div>
+            <div class="relative bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
+                <div class="bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-5">
+                    <h3 class="text-xl font-bold text-white">{{ authMode === 'login' ? '欢迎回来' : '创建账号' }}</h3>
+                    <p class="text-indigo-200 text-sm mt-1">{{ authMode === 'login' ? '登录以管理你的 SSH 隧道' : '注册新账号开始使用' }}</p>
+                </div>
+                <div class="p-6 space-y-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-500 mb-1">用户名</label>
+                        <input v-model="authForm.username"
+                            class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 outline-none transition-all">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-500 mb-1">密码</label>
+                        <input v-model="authForm.password" type="password"
+                            class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 outline-none transition-all">
+                    </div>
+                    <transition name="slide">
+                        <div v-if="authNeedMfa">
+                            <label class="block text-xs font-semibold text-indigo-500 mb-1">MFA 验证码</label>
+                            <input v-model="authForm.mfa_code" placeholder="6 位数字"
+                                class="w-full border-2 border-indigo-300 rounded-xl px-4 py-2.5 text-sm text-center tracking-widest focus:border-indigo-500 outline-none transition-all">
+                        </div>
+                    </transition>
+                </div>
+                <div class="px-6 pb-6 flex gap-3">
+                    <button @click="doAuth"
+                        class="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-3 rounded-xl font-bold text-sm hover:shadow-lg transition-all duration-200">
+                        {{ authMode === 'login' ? '登录' : '注册' }}
+                    </button>
+                    <button @click="showAuth = false"
+                        class="flex-1 bg-slate-100 text-slate-600 py-3 rounded-xl font-medium text-sm hover:bg-slate-200 transition-all duration-200">
+                        取消
+                    </button>
+                </div>
+                <div class="bg-slate-50 px-6 py-3 text-center border-t border-slate-100">
+                    <button @click="toggleAuthMode" class="text-xs text-indigo-600 hover:text-indigo-800 font-medium">
+                        {{ authMode === 'login' ? '没有账号？立即注册' : '已有账号？去登录' }}
+                    </button>
+                </div>
+            </div>
+        </div>
+    </transition>
 
-                async init() {
-                    const token = localStorage.getItem('token');
-                    if (token) {
-                        this.isLoggedIn = true;
-                        this.currentUser = localStorage.getItem('username');
-                        this.fetchTunnels();
-                        if (this.currentUser === 'admin') {
-                            this.fetchLogs();
-                        }
-                    }
-                },
+    <!-- ====== MFA Setup Modal ====== -->
+    <transition name="modal">
+        <div v-if="showMfaSetup" class="fixed inset-0 z-50 flex items-center justify-center p-4" @click.self="showMfaSetup = false">
+            <div class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm"></div>
+            <div class="relative bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
+                <div class="bg-gradient-to-r from-amber-500 to-orange-500 px-6 py-5">
+                    <h3 class="text-xl font-bold text-white">🔐 配置 MFA 双重认证</h3>
+                    <p class="text-amber-100 text-sm mt-1">扫描二维码或手动输入密钥</p>
+                </div>
+                <div class="p-6 space-y-5 text-center">
+                    <div class="flex justify-center">
+                        <img :src="mfaData.qr_code" alt="MFA QR Code" class="border-2 border-slate-100 rounded-2xl p-2 bg-white shadow-sm w-48 h-48">
+                    </div>
+                    <div class="bg-slate-50 p-3 rounded-xl">
+                        <p class="text-xs font-semibold text-slate-500 mb-1">手动输入密钥</p>
+                        <code class="text-sm text-indigo-600 font-mono break-all">{{ mfaData.secret }}</code>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-500 mb-1">输入验证码确认</label>
+                        <input v-model="mfaVerifyCode" placeholder="6 位数字"
+                            class="w-full border border-slate-200 rounded-xl px-4 py-3 text-center text-lg tracking-widest focus:border-amber-400 outline-none transition-all">
+                    </div>
+                    <p class="text-xs text-red-400 font-semibold">⚠️ 请务必保存密钥，丢失后无法找回！</p>
+                </div>
+                <div class="px-6 pb-6 flex gap-3">
+                    <button @click="verifyMfaSetup"
+                        class="flex-1 bg-gradient-to-r from-amber-500 to-orange-500 text-white py-3 rounded-xl font-bold text-sm hover:shadow-lg transition-all duration-200">
+                        验证并启用
+                    </button>
+                    <button @click="showMfaSetup = false"
+                        class="flex-1 bg-slate-100 text-slate-600 py-3 rounded-xl font-medium text-sm hover:bg-slate-200 transition-all duration-200">
+                        取消
+                    </button>
+                </div>
+            </div>
+        </div>
+    </transition>
 
-                async login() {
-                    try {
-                        const response = await fetch(`${this.API_BASE}/auth/login`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(this.loginForm)
-                        });
-                        const data = await response.json();
-                        if (response.ok) {
-                            this.isLoggedIn = true;
-                            this.currentUser = this.loginForm.username;
-                            localStorage.setItem('token', data.token);
-                            localStorage.setItem('username', this.currentUser);
-                            this.showLogin = false;
-                            this.mfaRequired = false;
-                            this.fetchTunnels();
-                            if (this.currentUser === 'admin') {
-                                this.fetchLogs();
-                            }
-                        } else if (data.detail === 'MFA_REQUIRED') {
-                            this.mfaRequired = true;
-                        } else {
-                            alert(data.detail || '登录失败');
-                        }
-                    } catch (e) {
-                        console.error(e);
-                        alert('网络错误');
-                    }
-                },
+    <!-- ====== Edit Tunnel Modal ====== -->
+    <transition name="modal">
+        <div v-if="showEditTunnelModal" class="fixed inset-0 z-50 flex items-center justify-center p-4" @click.self="showEditTunnelModal = false">
+            <div class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm"></div>
+            <div class="relative bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden max-h-[90vh] overflow-y-auto">
+                <div class="bg-gradient-to-r from-blue-500 to-cyan-500 px-6 py-5">
+                    <h3 class="text-xl font-bold text-white">✏️ 编辑隧道</h3>
+                    <p class="text-blue-100 text-sm mt-1">修改后会自动重建连接</p>
+                </div>
+                <div class="p-6 space-y-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-500 mb-1">隧道 ID</label>
+                        <input :value="editingTunnel.id" readonly
+                            class="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm bg-slate-50 text-slate-400">
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-500 mb-1">SSH 主机</label>
+                            <input v-model="editingTunnel.ssh_host"
+                                class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:border-blue-400 outline-none transition-all">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-500 mb-1">SSH 端口</label>
+                            <input v-model.number="editingTunnel.ssh_port" type="number"
+                                class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:border-blue-400 outline-none transition-all">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-500 mb-1">用户名</label>
+                            <input v-model="editingTunnel.username"
+                                class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:border-blue-400 outline-none transition-all">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-500 mb-1">密码</label>
+                            <input v-model="editingTunnel.password" type="password"
+                                class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:border-blue-400 outline-none transition-all">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-500 mb-1">类型</label>
+                            <input :value="editingTunnel.type" readonly
+                                class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-slate-50 text-slate-400">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-500 mb-1">本地端口</label>
+                            <input :value="editingTunnel.local_port" readonly
+                                class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm bg-slate-50 text-slate-400">
+                        </div>
+                    </div>
+                    <transition name="slide">
+                        <div v-if="editingTunnel.type === 'local'" class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-500 mb-1">远程主机</label>
+                                <input v-model="editingTunnel.remote_host"
+                                    class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:border-blue-400 outline-none transition-all">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-500 mb-1">远程端口</label>
+                                <input v-model.number="editingTunnel.remote_port" type="number"
+                                    class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:border-blue-400 outline-none transition-all">
+                            </div>
+                        </div>
+                    </transition>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-500 mb-1">备注</label>
+                        <input v-model="editingTunnel.remark"
+                            class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:border-blue-400 outline-none transition-all">
+                    </div>
+                </div>
+                <div class="px-6 pb-6 flex gap-3">
+                    <button @click="saveEditedTunnel"
+                        class="flex-1 bg-gradient-to-r from-blue-500 to-cyan-500 text-white py-3 rounded-xl font-bold text-sm hover:shadow-lg transition-all duration-200">
+                        保存修改
+                    </button>
+                    <button @click="showEditTunnelModal = false"
+                        class="flex-1 bg-slate-100 text-slate-600 py-3 rounded-xl font-medium text-sm hover:bg-slate-200 transition-all duration-200">
+                        取消
+                    </button>
+                </div>
+            </div>
+        </div>
+    </transition>
+</div>
 
-                async setupMfa() {
-                    try {
-                        const response = await fetch(`${this.API_BASE}/auth/mfa/setup?username=${this.currentUser}`, {
-                            method: 'POST'
-                        });
-                        const data = await response.json();
-                        if (response.ok) {
-                            this.mfaData = data;
-                            this.showMfaSetup = true;
-                        } else {
-                            alert(data.detail || '设置失败');
-                        }
-                    } catch (e) {
-                        console.error(e);
-                        alert('网络错误');
-                    }
-                },
+<script>
+const { createApp } = Vue;
 
-                async verifyMfaSetup() {
-                    try {
-                        const response = await fetch(`${this.API_BASE}/auth/mfa/verify`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                username: this.currentUser,
-                                code: this.mfaVerifyCode
-                            })
-                        });
-                        const data = await response.json();
-                        if (response.ok) {
-                            alert('MFA 验证成功并已启用！');
-                            this.showMfaSetup = false;
-                            this.mfaVerifyCode = '';
-                        } else {
-                            alert(data.detail || '验证失败，请检查验证码');
-                        }
-                    } catch (e) {
-                        console.error(e);
-                        alert('网络错误');
-                    }
-                },
+createApp({
+    data() {
+        return {
+            isLoggedIn: false,
+            currentUser: '',
+            tunnels: [],
+            logs: [],
+            creating: false,
+            showAuth: false,
+            authMode: 'login',
+            authNeedMfa: false,
+            showMfaSetup: false,
+            showEditTunnelModal: false,
+            mfaVerifyCode: '',
+            mfaData: { secret: '', qr_code: '' },
+            editingTunnel: { id: '', ssh_host: '', ssh_port: 22, username: '', password: '', local_port: 0, remote_host: '', remote_port: 0, type: '', remark: '' },
+            authForm: { username: '', password: '', mfa_code: '' },
+            tunnelForm: { type: 'local', ssh_host: '127.0.0.1', ssh_port: 22, username: 'user', password: 'password', local_port: 8080, remote_host: '127.0.0.1', remote_port: 80, remark: '' },
+            toasts: [],
+            _toastId: 0,
+        };
+    },
+    methods: {
+        toast(type, message) {
+            const id = ++this._toastId;
+            this.toasts.push({ id, type, message });
+            setTimeout(() => this.removeToast(id), 3500);
+        },
+        removeToast(id) {
+            this.toasts = this.toasts.filter(t => t.id !== id);
+        },
+        statusClass(tunnel) {
+            if (tunnel.verified === 'loading') return 'bg-yellow-100';
+            if (tunnel.verified === false) return 'bg-red-100 glow-red';
+            return 'bg-emerald-100 glow-green';
+        },
+        statusIconClass(tunnel) {
+            if (tunnel.verified === 'loading') return 'text-yellow-500 animate-spin';
+            if (tunnel.verified === false) return 'text-red-500';
+            return 'text-emerald-500';
+        },
+        openLogin() { this.authMode = 'login'; this.showAuth = true; this.authNeedMfa = false; this.authForm = { username: '', password: '', mfa_code: '' }; },
+        openRegister() { this.authMode = 'register'; this.showAuth = true; this.authNeedMfa = false; this.authForm = { username: '', password: '', mfa_code: '' }; },
+        toggleAuthMode() { this.authMode = this.authMode === 'login' ? 'register' : 'login'; this.authNeedMfa = false; },
 
-                logout() {
-                    this.isLoggedIn = false;
-                    this.currentUser = '';
-                    localStorage.removeItem('token');
-                    localStorage.removeItem('username');
-                },
-
-                async fetchTunnels() {
-                    try {
-                        const response = await fetch(`${this.API_BASE}/tunnel/list`);
-                        const data = await response.json();
-                        this.tunnels = data.tunnels.map(t => {
-                            const existing = this.tunnels.find(et => et.id === t.id);
-                            return existing ? { ...t, verified: existing.verified } : { ...t, verified: true };
-                        });
-                    } catch (e) {
-                        console.error(e);
-                    }
-                },
-
-                async verifyTunnel(tunnel) {
-                    try {
-                        const index = this.tunnels.findIndex(t => t.id === tunnel.id);
-                        if (index !== -1) {
-                            this.tunnels[index].verified = 'loading';
-                        }
-
-                        const response = await fetch(`${this.API_BASE}/tunnel/verify/${tunnel.id}?local_port=${tunnel.local_port}`, {
-                            method: 'POST',
-                            headers: { 'X-User': this.currentUser }
-                        });
-                        const data = await response.json();
-                        
-                        if (index !== -1) {
-                            this.tunnels[index].verified = data.success;
-                        }
-                    } catch (e) {
-                        console.error(e);
-                        const index = this.tunnels.findIndex(t => t.id === tunnel.id);
-                        if (index !== -1) {
-                            this.tunnels[index].verified = false;
-                        }
-                    }
-                },
-
-                async createTunnel() {
-                    try {
-                        // 如果没有提供备注，则自动生成一个
-                        if (!this.tunnelForm.remark) {
-                            let nextServerNum = this.tunnels.filter(t => t.remark && t.remark.startsWith('服务器')).length + 1;
-                            this.tunnelForm.remark = `服务器${nextServerNum}`;
-                        }
-
-                        const response = await fetch(`${this.API_BASE}/tunnel/create`, {
-                            method: 'POST',
-                            headers: { 
-                                'Content-Type': 'application/json',
-                                'X-User': this.currentUser
-                            },
-                            body: JSON.stringify(this.tunnelForm)
-                        });
-                        const data = await response.json();
-                        if (response.ok) {
-                            this.fetchTunnels();
-                            alert('隧道创建成功: ' + data.tunnel_id);
-                            // 重置备注字段，以便下次创建时可以重新生成或手动输入
-                            this.tunnelForm.remark = '';
-                        } else {
-                            alert(data.detail || '创建失败');
-                        }
-                    } catch (e) {
-                        console.error(e);
-                        alert('网络错误');
-                    }
-                },
-
-                async stopTunnel(tunnelId) {
-                    try {
-                        const response = await fetch(`${this.API_BASE}/tunnel/stop/${tunnelId}`, {
-                            method: 'POST',
-                            headers: { 'X-User': this.currentUser }
-                        });
-                        if (response.ok) {
-                            this.fetchTunnels();
-                        } else {
-                            const data = await response.json();
-                            alert(data.detail || '停止失败');
-                        }
-                    } catch (e) {
-                        console.error(e);
-                    }
-                },
-
-                async saveEditedTunnel() {
-                    try {
-                        const response = await fetch(`${this.API_BASE}/tunnel/update/${this.editingTunnel.id}`, {
-                            method: 'POST',
-                            headers: { 
-                                'Content-Type': 'application/json',
-                                'X-User': this.currentUser
-                            },
-                            body: JSON.stringify({
-                                remark: this.editingTunnel.remark,
-                                ssh_host: this.editingTunnel.ssh_host,
-                                ssh_port: this.editingTunnel.ssh_port,
-                                username: this.editingTunnel.username,
-                                password: this.editingTunnel.password,
-                                local_port: this.editingTunnel.local_port,
-                                remote_host: this.editingTunnel.remote_host,
-                                remote_port: this.editingTunnel.remote_port,
-                                type: this.editingTunnel.type
-                            })
-                        });
-                        if (response.ok) {
-                            alert('隧道更新成功！');
-                            this.fetchTunnels();
-                            this.showEditTunnelModal = false;
-                        } else {
-                            const data = await response.json();
-                            alert(data.detail || '更新失败');
-                        }
-                    } catch (e) {
-                        console.error(e);
-                        alert('网络错误');
-                    }
-                },
-
-                openEditTunnelModal(tunnel) {
-                    this.editingTunnel = { ...tunnel };
-                    this.showEditTunnelModal = true;
-                },
-
-                async fetchLogs() {
-                    try {
-                        const response = await fetch(`${this.API_BASE}/auth/logs`, {
-                            headers: { 
-                                'X-User': this.currentUser
-                            }
-                        });
-                        const data = await response.json();
-                        if (response.ok) {
-                            this.logs = data.logs.map(log => ({
-                                ...log,
-                                timestamp: new Date(log.timestamp).toLocaleString()
-                            }));
-                        }
-                    } catch (e) {
-                        console.error(e);
-                    }
+        async doAuth() {
+            const url = this.authMode === 'login' ? '/auth/login' : '/auth/register';
+            try {
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(this.authForm)
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    this.isLoggedIn = true;
+                    this.currentUser = this.authForm.username;
+                    localStorage.setItem('token', data.token);
+                    localStorage.setItem('username', this.currentUser);
+                    this.showAuth = false;
+                    this.authNeedMfa = false;
+                    this.fetchTunnels();
+                    if (this.currentUser === 'admin') this.fetchLogs();
+                    this.toast('success', this.authMode === 'login' ? '登录成功！' : '注册成功！');
+                } else if (data.detail === 'MFA_REQUIRED') {
+                    this.authNeedMfa = true;
+                } else {
+                    this.toast('error', data.detail || '操作失败');
                 }
+            } catch (e) {
+                this.toast('error', '网络错误');
             }
+        },
+
+        async setupMfa() {
+            try {
+                const res = await fetch(`/auth/mfa/setup?username=${this.currentUser}`, { method: 'POST' });
+                const data = await res.json();
+                if (res.ok) { this.mfaData = data; this.showMfaSetup = true; }
+                else this.toast('error', data.detail || '设置失败');
+            } catch (e) { this.toast('error', '网络错误'); }
+        },
+
+        async verifyMfaSetup() {
+            try {
+                const res = await fetch('/auth/mfa/verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: this.currentUser, code: this.mfaVerifyCode })
+                });
+                if (res.ok) {
+                    this.toast('success', 'MFA 已启用！');
+                    this.showMfaSetup = false;
+                    this.mfaVerifyCode = '';
+                } else {
+                    const data = await res.json();
+                    this.toast('error', data.detail || '验证失败');
+                }
+            } catch (e) { this.toast('error', '网络错误'); }
+        },
+
+        logout() {
+            this.isLoggedIn = false;
+            this.currentUser = '';
+            localStorage.removeItem('token');
+            localStorage.removeItem('username');
+            this.tunnels = [];
+            this.logs = [];
+        },
+
+        async fetchTunnels() {
+            try {
+                const res = await fetch('/tunnel/list');
+                const data = await res.json();
+                this.tunnels = data.tunnels.map(t => {
+                    const existing = this.tunnels.find(et => et.id === t.id);
+                    return existing ? { ...t, verified: existing.verified } : { ...t, verified: true };
+                });
+            } catch (e) { console.error(e); }
+        },
+
+        async verifyTunnel(tunnel) {
+            const idx = this.tunnels.findIndex(t => t.id === tunnel.id);
+            if (idx !== -1) this.tunnels[idx].verified = 'loading';
+            try {
+                const res = await fetch(`/tunnel/verify/${tunnel.id}?local_port=${tunnel.local_port}`, {
+                    method: 'POST',
+                    headers: { 'X-User': this.currentUser }
+                });
+                const data = await res.json();
+                if (idx !== -1) this.tunnels[idx].verified = data.success;
+                this.toast(data.success ? 'success' : 'error', data.success ? '连接正常' : '连接失败');
+            } catch (e) {
+                if (idx !== -1) this.tunnels[idx].verified = false;
+                this.toast('error', '验证失败');
+            }
+        },
+
+        async createTunnel() {
+            this.creating = true;
+            try {
+                if (!this.tunnelForm.remark) {
+                    const n = this.tunnels.filter(t => t.remark && t.remark.startsWith('服务器')).length + 1;
+                    this.tunnelForm.remark = `服务器${n}`;
+                }
+                const res = await fetch('/tunnel/create', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-User': this.currentUser },
+                    body: JSON.stringify(this.tunnelForm)
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    this.fetchTunnels();
+                    this.toast('success', '隧道创建成功！');
+                    this.tunnelForm.remark = '';
+                } else {
+                    this.toast('error', data.detail || '创建失败');
+                }
+            } catch (e) { this.toast('error', '网络错误'); }
+            finally { this.creating = false; }
+        },
+
+        async stopTunnel(tunnelId) {
+            try {
+                const res = await fetch(`/tunnel/stop/${tunnelId}`, {
+                    method: 'POST',
+                    headers: { 'X-User': this.currentUser }
+                });
+                if (res.ok) { this.fetchTunnels(); this.toast('success', '隧道已停止'); }
+                else { const data = await res.json(); this.toast('error', data.detail || '停止失败'); }
+            } catch (e) { console.error(e); }
+        },
+
+        async saveEditedTunnel() {
+            try {
+                const res = await fetch(`/tunnel/update/${this.editingTunnel.id}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-User': this.currentUser },
+                    body: JSON.stringify({
+                        remark: this.editingTunnel.remark,
+                        ssh_host: this.editingTunnel.ssh_host,
+                        ssh_port: this.editingTunnel.ssh_port,
+                        username: this.editingTunnel.username,
+                        password: this.editingTunnel.password,
+                        local_port: this.editingTunnel.local_port,
+                        remote_host: this.editingTunnel.remote_host,
+                        remote_port: this.editingTunnel.remote_port,
+                        type: this.editingTunnel.type
+                    })
+                });
+                if (res.ok) {
+                    this.toast('success', '隧道更新成功！');
+                    this.fetchTunnels();
+                    this.showEditTunnelModal = false;
+                } else {
+                    const data = await res.json();
+                    this.toast('error', data.detail || '更新失败');
+                }
+            } catch (e) { this.toast('error', '网络错误'); }
+        },
+
+        openEditTunnelModal(tunnel) {
+            this.editingTunnel = { ...tunnel };
+            this.showEditTunnelModal = true;
+        },
+
+        async fetchLogs() {
+            try {
+                const res = await fetch('/auth/logs', { headers: { 'X-User': this.currentUser } });
+                const data = await res.json();
+                if (res.ok) {
+                    this.logs = data.logs.map(log => ({
+                        ...log,
+                        timestamp: new Date(log.timestamp).toLocaleString()
+                    }));
+                }
+            } catch (e) { console.error(e); }
         }
-    </script>
+    },
+    mounted() {
+        const token = localStorage.getItem('token');
+        if (token) {
+            this.isLoggedIn = true;
+            this.currentUser = localStorage.getItem('username') || '';
+            this.fetchTunnels();
+            if (this.currentUser === 'admin') this.fetchLogs();
+        }
+    }
+}).mount('#app');
+</script>
 </body>
 </html>
