@@ -26,10 +26,10 @@ async def init_data():
 
     # 1. Create users
     from infra.db.sqlite import db as sqlite_db
-    await sqlite_db.create_user("user", "password")
+    await sqlite_db.create_user("user", "password", overwrite=True)
     print("User 'user' created with password 'password'.")
     
-    await sqlite_db.create_user("admin", "admin")
+    await sqlite_db.create_user("admin", "admin", overwrite=True)
     print("User 'admin' created with password 'admin'.")
     
     # 2. Add Roles

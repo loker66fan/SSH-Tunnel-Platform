@@ -73,7 +73,25 @@
                     <h2 class="text-lg font-bold text-slate-800">最近 100 条日志</h2>
                     <p class="text-sm text-slate-500 mt-1">按时间倒序展示账号操作记录</p>
                 </div>
-                <div class="text-xs text-slate-400">仅管理员可见</div>
+                <div class="flex items-center gap-3">
+                    <select v-model="cleanupRetention"
+                        class="border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-600 bg-white focus:border-slate-400 outline-none">
+                        <option value="24h">清除 24 小时前</option>
+                        <option value="7d">清除 7 天前</option>
+                        <option value="30d">清除 30 天前</option>
+                        <option value="90d">清除 90 天前</option>
+                    </select>
+                    <button @click="cleanupLogs" :disabled="loading || cleaning"
+                        class="bg-red-50 hover:bg-red-100 text-red-600 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 disabled:opacity-50">
+                        {{ cleaning ? '清理中...' : '清理日志' }}
+                    </button>
+                </div>
+            </div>
+
+            <div v-if="notice.message"
+                :class="notice.type === 'success' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-red-50 text-red-700 border-red-100'"
+                class="mx-6 mt-4 px-4 py-3 rounded-xl border text-sm">
+                {{ notice.message }}
             </div>
 
             <div v-if="loading" class="px-6 py-12 text-center text-slate-400 text-sm">
@@ -125,8 +143,11 @@ createApp({
         return {
             currentUser: localStorage.getItem('username') || '',
             loading: false,
+            cleaning: false,
             authorized: false,
-            logs: []
+            logs: [],
+            cleanupRetention: '7d',
+            notice: { type: '', message: '' }
         };
     },
     computed: {
@@ -138,6 +159,9 @@ createApp({
         }
     },
     methods: {
+        showNotice(type, message) {
+            this.notice = { type, message };
+        },
         async fetchLogs() {
             if (this.currentUser !== 'admin') {
                 this.authorized = false;
@@ -158,11 +182,49 @@ createApp({
                     this.authorized = true;
                 } else {
                     this.authorized = false;
+                    this.showNotice('error', data.detail || '加载审计日志失败');
                 }
             } catch (e) {
                 this.authorized = false;
+                this.showNotice('error', '加载审计日志失败');
             } finally {
                 this.loading = false;
+            }
+        },
+        async cleanupLogs() {
+            const labels = {
+                '24h': '24 小时前',
+                '7d': '7 天前',
+                '30d': '30 天前',
+                '90d': '90 天前'
+            };
+            const label = labels[this.cleanupRetention] || this.cleanupRetention;
+            const confirmed = window.confirm(`确认清除 ${label} 的审计日志吗？该操作不可撤销。`);
+            if (!confirmed) {
+                return;
+            }
+
+            this.cleaning = true;
+            try {
+                const res = await fetch('/auth/logs/cleanup', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-User': this.currentUser
+                    },
+                    body: JSON.stringify({ retention: this.cleanupRetention })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    this.showNotice('success', `已清理 ${data.deleted_count} 条 ${label} 的日志记录。`);
+                    await this.fetchLogs();
+                } else {
+                    this.showNotice('error', data.detail || '清理失败');
+                }
+            } catch (e) {
+                this.showNotice('error', '清理失败');
+            } finally {
+                this.cleaning = false;
             }
         }
     },

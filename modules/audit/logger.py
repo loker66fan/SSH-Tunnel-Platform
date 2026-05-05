@@ -2,7 +2,6 @@
 from modules.audit.models import AuditLog
 from infra.db.sqlite import db
 from core.logger import logger
-import json
 
 class AuditLogger:
     async def log(self, audit_log: AuditLog):
@@ -14,12 +13,14 @@ class AuditLogger:
             
             # Save to database if initialized
             if db._db:
-                await db._db.execute(
-                    "INSERT INTO audit_logs (timestamp, user, action, resource, status, details) VALUES (?, ?, ?, ?, ?, ?)",
-                    (audit_log.timestamp.isoformat(), audit_log.user, audit_log.action, 
-                     audit_log.resource, audit_log.status, audit_log.details)
+                await db.add_audit_log(
+                    audit_log.timestamp.isoformat(),
+                    audit_log.user,
+                    audit_log.action,
+                    audit_log.resource,
+                    audit_log.status,
+                    audit_log.details,
                 )
-                await db._db.commit()
         except Exception as e:
             logger.error(f"Failed to record audit log: {str(e)}")
 

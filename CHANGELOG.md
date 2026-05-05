@@ -2,6 +2,59 @@
 
 ---
 
+## 2026-05-05：账号持久化、审计清理与隧道分组
+
+**目标**：补齐多用户日常使用能力，让账号、隧道和审计日志都具备可持续维护的持久化管理能力。
+
+**新增功能**：
+
+1. **账号注册与 SQLite 持久化**
+   - 新增 Web 端普通账号注册
+   - 用户信息与隧道配置统一持久化到 SQLite
+   - 注册后自动具备基础隧道使用权限
+
+2. **按用户保存隧道**
+   - 隧道不再只存在于内存
+   - 退出登录时支持“保存现有隧道”或“丢弃当前隧道记录”
+   - 已保存但未运行的隧道支持重新启动
+
+3. **我的隧道分组**
+   - 新建/编辑隧道支持自定义 `group_name`
+   - 首页按分组展示隧道，未分组单独归类
+   - 支持分组重命名、清空分组（移动到未分组）
+
+4. **审计日志清理**
+   - 独立审计日志页新增保留策略清理
+   - 支持 `24h`、`7d`、`30d`、`90d` 四档
+   - 清理行为本身也会记录到审计日志
+
+5. **启动入口兼容**
+   - 新增根目录 `main.py`
+   - 现在既可用 `python main.py`，也可继续使用 `uvicorn apps.api.main:app`
+
+**新增接口**：
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET` | `/auth/logs` | 获取最近 100 条审计日志（管理员） |
+| `POST` | `/auth/logs/cleanup` | 按保留策略清理审计日志（管理员） |
+| `GET` | `/tunnel/groups` | 获取当前用户的分组摘要 |
+| `POST` | `/tunnel/start/{id}` | 启动已保存隧道 |
+| `DELETE` | `/tunnel/{id}` | 删除隧道记录 |
+| `POST` | `/tunnel/groups/rename` | 重命名分组 |
+| `POST` | `/tunnel/groups/clear` | 清空分组 |
+| `POST` | `/tunnel/logout` | 退出登录时保存/丢弃当前用户隧道 |
+
+**测试**：
+
+- 新增 SQLite 单测，覆盖：
+  - 用户注册唯一性
+  - 用户隧道 CRUD
+  - 审计日志按时间清理
+  - 隧道分组统计、重命名、清空
+
+---
+
 ## 一、运行环境
 
 | 组件 | 版本/要求 |
@@ -14,7 +67,7 @@
 
 ```bash
 # 进入项目目录
-cd ssh_gateway_project_v2
+cd SSH-Tunnel-Platform
 
 # 一键安装所有依赖
 pip install -r requirements.txt
@@ -49,13 +102,13 @@ pip install -r requirements.txt
 
 ```bash
 # 1. 进入项目目录
-cd ssh_gateway_project_v2
+cd SSH-Tunnel-Platform
 
 # 2. 安装依赖（首次运行）
 pip install -r requirements.txt
 
 # 3. 启动 API 服务器
-python -m uvicorn apps.api.main:app --host 0.0.0.0 --port 18002
+python main.py
 
 # 4. 打开浏览器访问
 # http://localhost:18002
@@ -126,7 +179,7 @@ python -m uvicorn apps.api.main:app --host 0.0.0.0 --port 18002
 ## 四、项目结构
 
 ```
-ssh_gateway_project_v2/
+SSH-Tunnel-Platform/
 ├── apps/api/           # 控制层（FastAPI）
 │   ├── main.py         # API 入口点、路由注册、静态文件服务
 │   └── routes/         # API 路由

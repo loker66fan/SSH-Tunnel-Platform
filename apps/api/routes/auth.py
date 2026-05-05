@@ -1,28 +1,46 @@
 
-from fastapi import APIRouter, HTTPException, Depends, Header
+from datetime import datetime, timedelta, timezone
+
+from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel
 from modules.auth.password import PasswordAuthProvider
 from modules.auth.base import AuthRequest
 from modules.auth.mfa.totp import TOTPProvider
 from infra.db.sqlite import db
+from modules.acl.evaluator import acl_evaluator
 from modules.audit.logger import audit_logger
 from modules.audit.models import AuditLog
 
 router = APIRouter()
 auth_provider = PasswordAuthProvider()
 totp_provider = TOTPProvider()
+AUDIT_RETENTION_OPTIONS = {
+    "24h": timedelta(hours=24),
+    "7d": timedelta(days=7),
+    "30d": timedelta(days=30),
+    "90d": timedelta(days=90),
+}
+
+
+class AuditCleanupRequest(BaseModel):
+    retention: str
 
 @router.post("/register")
 async def register(request: AuthRequest):
     try:
         await db.create_user(request.username, request.password)
+        await acl_evaluator.load_policies()
         await audit_logger.log(AuditLog(
             user=request.username,
             action="register",
             resource="system",
             status="success"
         ))
-        return {"message": "User created"}
+        return {
+            "message": "User created",
+            "token": "dummy-token-for-mvp",
+            "username": request.username
+        }
     except Exception as e:
         await audit_logger.log(AuditLog(
             user=request.username,
@@ -121,18 +139,26 @@ async def verify_mfa(request: MFAVerifyRequest):
 async def get_audit_logs(x_user: str = Header("user")):
     if x_user != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
-    
-    cur = await db._db.execute("SELECT id, timestamp, user, action, resource, status, details FROM audit_logs ORDER BY id DESC LIMIT 100")
-    rows = await cur.fetchall()
-    logs = []
-    for row in rows:
-        logs.append({
-            "id": row[0],
-            "timestamp": row[1],
-            "user": row[2],
-            "action": row[3],
-            "resource": row[4],
-            "status": row[5],
-            "details": row[6]
-        })
-    return {"logs": logs}
+
+    return {"logs": await db.list_audit_logs(limit=100)}
+
+
+@router.post("/logs/cleanup")
+async def cleanup_audit_logs(request: AuditCleanupRequest, x_user: str = Header("user")):
+    if x_user != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    retention_delta = AUDIT_RETENTION_OPTIONS.get(request.retention)
+    if retention_delta is None:
+        raise HTTPException(status_code=400, detail="Unsupported retention option")
+
+    cutoff = datetime.now(timezone.utc) - retention_delta
+    deleted_count = await db.delete_audit_logs_older_than(cutoff.isoformat())
+    await audit_logger.log(AuditLog(
+        user=x_user,
+        action="cleanup_audit_logs",
+        resource="audit_logs",
+        status="success",
+        details=f"retention={request.retention}, deleted={deleted_count}"
+    ))
+    return {"deleted_count": deleted_count, "retention": request.retention}

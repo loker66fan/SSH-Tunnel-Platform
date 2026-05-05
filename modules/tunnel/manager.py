@@ -33,11 +33,11 @@ class TunnelManager:
             except socket.error:
                 return True
 
-    async def create_local_forward(self, host, port, username, password, local_port, remote_host, remote_port, remark: str = None):
+    async def create_local_forward(self, host, port, username, password, local_port, remote_host, remote_port, remark: str = None, tunnel_id: str = None):
         if self._is_port_in_use(local_port):
             raise Exception(f"Port {local_port} is already in use")
         
-        tunnel_id = str(uuid.uuid4())
+        tunnel_id = tunnel_id or str(uuid.uuid4())
         backend = AsyncSSHBackend(host=host, port=port, username=username, password=password, remark=remark,
                                    local_port=local_port, remote_host=remote_host, remote_port=remote_port)
         try:
@@ -50,11 +50,11 @@ class TunnelManager:
             await backend.close()
             raise
 
-    async def create_socks_proxy(self, host, port, username, password, local_port, remark: str = None):
+    async def create_socks_proxy(self, host, port, username, password, local_port, remark: str = None, tunnel_id: str = None):
         if self._is_port_in_use(local_port):
             raise Exception(f"Port {local_port} is already in use")
         
-        tunnel_id = str(uuid.uuid4())
+        tunnel_id = tunnel_id or str(uuid.uuid4())
         backend = AsyncSSHBackend(host=host, port=port, username=username, password=password, remark=remark,
                                    local_port=local_port)
         try:
@@ -229,4 +229,3 @@ class TunnelManager:
             logger.info(f"Terminal session closed for tunnel {tunnel_id}")
 
 tunnel_manager = TunnelManager()
-

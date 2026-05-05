@@ -105,7 +105,7 @@
                         <div class="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center">
                             <svg class="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
                         </div>
-                        <div><p class="text-2xl font-bold text-slate-800">{{ tunnels.length }}</p><p class="text-xs text-slate-500">活动隧道</p></div>
+                        <div><p class="text-2xl font-bold text-slate-800">{{ activeTunnelCount }}</p><p class="text-xs text-slate-500">运行中隧道</p></div>
                     </div>
                     <div class="bg-white rounded-2xl shadow-sm border border-slate-200/60 p-5 flex items-center gap-4">
                         <div class="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
@@ -190,6 +190,14 @@
                                         class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 outline-none transition-all">
                                 </div>
                             </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-500 mb-1">分组</label>
+                                    <input v-model="tunnelForm.group_name" list="group-options" placeholder="例如：生产环境 / 测试机"
+                                        class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 outline-none transition-all">
+                                </div>
+                                <datalist id="group-options">
+                                    <option v-for="group in namedGroups" :key="group.group_name" :value="group.group_name"></option>
+                                </datalist>
                             <transition name="slide">
                                 <div v-if="tunnelForm.type === 'local'" class="grid grid-cols-2 gap-3">
                                     <div>
@@ -216,67 +224,106 @@
                         <div class="bg-gradient-to-r from-emerald-500 to-teal-500 px-6 py-4 flex justify-between items-center">
                             <h2 class="text-lg font-bold text-white flex items-center gap-2">
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                                活动隧道
+                                我的隧道
                             </h2>
                             <span class="bg-white/20 text-white text-xs px-2.5 py-1 rounded-full font-bold">{{ tunnels.length }}</span>
                         </div>
+                        <div class="px-6 py-4 border-b border-slate-100 bg-slate-50/70">
+                            <div class="flex flex-wrap items-center gap-3">
+                                <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider">分组管理</div>
+                                <select v-model="selectedGroupName"
+                                    class="border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-600 bg-white focus:border-emerald-400 outline-none min-w-[180px]">
+                                    <option value="">选择分组</option>
+                                    <option v-for="group in namedGroups" :key="group.group_name" :value="group.group_name">
+                                        {{ group.group_name }} ({{ group.tunnel_count }})
+                                    </option>
+                                </select>
+                                <input v-model="groupRenameTarget" placeholder="新的分组名"
+                                    class="border border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-emerald-400 outline-none min-w-[180px]">
+                                <button @click="renameGroup"
+                                    class="px-3 py-2 rounded-xl text-sm font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-all duration-200">
+                                    重命名分组
+                                </button>
+                                <button @click="clearGroup"
+                                    class="px-3 py-2 rounded-xl text-sm font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all duration-200">
+                                    清空分组
+                                </button>
+                            </div>
+                        </div>
                         <div class="divide-y divide-slate-100">
-                            <transition-group name="slide" tag="ul">
-                                <li v-for="tunnel in tunnels" :key="tunnel.id"
-                                    class="px-6 py-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
-                                    <div class="flex items-center gap-4 min-w-0">
-                                        <!-- Status Icon -->
-                                        <div class="relative flex-shrink-0">
-                                            <div class="w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300"
-                                                :class="statusClass(tunnel)">
-                                                <svg class="w-5 h-5 transition-all duration-300" :class="statusIconClass(tunnel)" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path v-if="tunnel.verified === 'loading'" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-                                                    <path v-else stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                                        d="M13 10V3L4 14h7v7l9-11h-7z"/>
-                                                </svg>
+                            <div v-for="group in groupedTunnels" :key="group.key" class="border-b border-slate-100 last:border-b-0">
+                                <div class="px-6 py-4 bg-slate-50 flex items-center justify-between">
+                                    <div>
+                                        <p class="text-sm font-semibold text-slate-800">{{ group.label }}</p>
+                                        <p class="text-xs text-slate-400 mt-1">{{ group.tunnels.length }} 条隧道 · {{ group.activeCount }} 条运行中</p>
+                                    </div>
+                                    <div class="text-xs text-slate-400">{{ group.hasName ? '自定义分组' : '未分组' }}</div>
+                                </div>
+                                <transition-group name="slide" tag="ul">
+                                    <li v-for="tunnel in group.tunnels" :key="tunnel.id"
+                                        class="px-6 py-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
+                                        <div class="flex items-center gap-4 min-w-0">
+                                            <!-- Status Icon -->
+                                            <div class="relative flex-shrink-0">
+                                                <div class="w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300"
+                                                    :class="statusClass(tunnel)">
+                                                    <svg class="w-5 h-5 transition-all duration-300" :class="statusIconClass(tunnel)" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path v-if="tunnel.verified === 'loading'" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                                                        <path v-else stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                            d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                                                    </svg>
+                                                </div>
+                                                <span v-if="tunnel.verified === 'loading'" class="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-yellow-400 rounded-full pulse-dot"></span>
                                             </div>
-                                            <span v-if="tunnel.verified === 'loading'" class="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-yellow-400 rounded-full pulse-dot"></span>
+                                            <div class="min-w-0">
+                                                <p class="text-sm font-semibold text-slate-800 truncate">{{ tunnel.remark || tunnel.id.substring(0,8) + '...' }}</p>
+                                                <p class="text-xs text-slate-400 mt-0.5">
+                                                    <span class="inline-flex items-center gap-1">
+                                                        <span class="w-1.5 h-1.5 rounded-full"
+                                                            :class="tunnel.type === 'socks5' ? 'bg-purple-400' : 'bg-blue-400'"></span>
+                                                        :{{ tunnel.local_port }} ({{ tunnel.type }}) · {{ tunnel.is_active ? '运行中' : '已保存' }}
+                                                    </span>
+                                                </p>
+                                            </div>
                                         </div>
-                                        <div class="min-w-0">
-                                            <p class="text-sm font-semibold text-slate-800 truncate">{{ tunnel.remark || tunnel.id.substring(0,8) + '...' }}</p>
-                                            <p class="text-xs text-slate-400 mt-0.5">
-                                                <span class="inline-flex items-center gap-1">
-                                                    <span class="w-1.5 h-1.5 rounded-full"
-                                                        :class="tunnel.type === 'socks5' ? 'bg-purple-400' : 'bg-blue-400'"></span>
-                                                    :{{ tunnel.local_port }} ({{ tunnel.type }})
-                                                </span>
-                                            </p>
+                                        <div class="flex items-center gap-1 flex-shrink-0 ml-4">
+                                            <button v-if="tunnel.is_active" @click="verifyTunnel(tunnel)"
+                                                :disabled="tunnel.verified === 'loading'"
+                                                class="px-2.5 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 hover:scale-105 disabled:opacity-50"
+                                                :class="tunnel.verified === false ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'">
+                                                {{ tunnel.verified === 'loading' ? '⏳' : '验证' }}
+                                            </button>
+                                            <button v-if="!tunnel.is_active" @click="startTunnel(tunnel.id)"
+                                                class="px-2.5 py-1.5 text-xs font-medium rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-all duration-200 hover:scale-105">
+                                                启动
+                                            </button>
+                                            <button @click="openEditTunnelModal(tunnel)"
+                                                class="px-2.5 py-1.5 text-xs font-medium rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-all duration-200 hover:scale-105">
+                                                修改
+                                            </button>
+                                            <a v-if="tunnel.is_active" :href="'/terminal.html?tid=' + tunnel.id" target="_blank"
+                                                class="px-2.5 py-1.5 text-xs font-medium rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-all duration-200 hover:scale-105 no-underline">
+                                                终端
+                                            </a>
+                                            <button v-if="tunnel.is_active" @click="stopTunnel(tunnel.id)"
+                                                class="px-2.5 py-1.5 text-xs font-medium rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition-all duration-200 hover:scale-105">
+                                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                                            </button>
+                                            <button v-if="!tunnel.is_active" @click="deleteTunnel(tunnel.id)"
+                                                class="px-2.5 py-1.5 text-xs font-medium rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 transition-all duration-200 hover:scale-105">
+                                                删除
+                                            </button>
                                         </div>
-                                    </div>
-                                    <div class="flex items-center gap-1 flex-shrink-0 ml-4">
-                                        <button @click="verifyTunnel(tunnel)"
-                                            :disabled="tunnel.verified === 'loading'"
-                                            class="px-2.5 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 hover:scale-105 disabled:opacity-50"
-                                            :class="tunnel.verified === false ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'">
-                                            {{ tunnel.verified === 'loading' ? '⏳' : '验证' }}
-                                        </button>
-                                        <button @click="openEditTunnelModal(tunnel)"
-                                            class="px-2.5 py-1.5 text-xs font-medium rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-all duration-200 hover:scale-105">
-                                            修改
-                                        </button>
-                                        <a :href="'/terminal.html?tid=' + tunnel.id" target="_blank"
-                                            class="px-2.5 py-1.5 text-xs font-medium rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-all duration-200 hover:scale-105 no-underline">
-                                            终端
-                                        </a>
-                                        <button @click="stopTunnel(tunnel.id)"
-                                            class="px-2.5 py-1.5 text-xs font-medium rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition-all duration-200 hover:scale-105">
-                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-                                        </button>
-                                    </div>
-                                </li>
-                            </transition-group>
+                                    </li>
+                                </transition-group>
+                            </div>
                             <li v-if="tunnels.length === 0" class="px-6 py-16 text-center">
                                 <div class="text-slate-300 mb-3">
                                     <svg class="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/></svg>
                                 </div>
-                                <p class="text-slate-400 text-sm font-medium">暂无活动隧道</p>
-                                <p class="text-slate-300 text-xs mt-1">创建你的第一个 SSH 隧道吧</p>
+                                <p class="text-slate-400 text-sm font-medium">暂无已保存隧道</p>
+                                <p class="text-slate-300 text-xs mt-1">创建并保存你的第一个 SSH 隧道吧</p>
                             </li>
                         </div>
                     </div>
@@ -441,6 +488,11 @@
                         <input v-model="editingTunnel.remark"
                             class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:border-blue-400 outline-none transition-all">
                     </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-500 mb-1">分组</label>
+                        <input v-model="editingTunnel.group_name" list="group-options"
+                            class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:border-blue-400 outline-none transition-all">
+                    </div>
                 </div>
                 <div class="px-6 pb-6 flex gap-3">
                     <button @click="saveEditedTunnel"
@@ -466,6 +518,7 @@ createApp({
             isLoggedIn: false,
             currentUser: '',
             tunnels: [],
+            groups: [],
             creating: false,
             showAuth: false,
             authMode: 'login',
@@ -474,12 +527,46 @@ createApp({
             showEditTunnelModal: false,
             mfaVerifyCode: '',
             mfaData: { secret: '', qr_code: '' },
-            editingTunnel: { id: '', ssh_host: '', ssh_port: 22, username: '', password: '', local_port: 0, remote_host: '', remote_port: 0, type: '', remark: '' },
+            editingTunnel: { id: '', ssh_host: '', ssh_port: 22, username: '', password: '', local_port: 0, remote_host: '', remote_port: 0, type: '', remark: '', group_name: '' },
             authForm: { username: '', password: '', mfa_code: '' },
-            tunnelForm: { type: 'local', ssh_host: '127.0.0.1', ssh_port: 22, username: 'user', password: 'password', local_port: 8080, remote_host: '127.0.0.1', remote_port: 80, remark: '' },
+            tunnelForm: { type: 'local', ssh_host: '127.0.0.1', ssh_port: 22, username: 'user', password: 'password', local_port: 8080, remote_host: '127.0.0.1', remote_port: 80, remark: '', group_name: '' },
+            selectedGroupName: '',
+            groupRenameTarget: '',
             toasts: [],
             _toastId: 0,
         };
+    },
+    computed: {
+        activeTunnelCount() {
+            return this.tunnels.filter(tunnel => tunnel.is_active).length;
+        },
+        namedGroups() {
+            return this.groups.filter(group => group.group_name);
+        },
+        groupedTunnels() {
+            const map = new Map();
+            for (const tunnel of this.tunnels) {
+                const key = tunnel.group_name || '__ungrouped__';
+                if (!map.has(key)) {
+                    map.set(key, {
+                        key,
+                        label: tunnel.group_name || '未分组',
+                        hasName: Boolean(tunnel.group_name),
+                        activeCount: 0,
+                        tunnels: []
+                    });
+                }
+                const group = map.get(key);
+                group.tunnels.push(tunnel);
+                if (tunnel.is_active) group.activeCount += 1;
+            }
+
+            return Array.from(map.values()).sort((a, b) => {
+                if (a.hasName && !b.hasName) return -1;
+                if (!a.hasName && b.hasName) return 1;
+                return a.label.localeCompare(b.label, 'zh-CN');
+            });
+        }
     },
     methods: {
         toast(type, message) {
@@ -491,11 +578,13 @@ createApp({
             this.toasts = this.toasts.filter(t => t.id !== id);
         },
         statusClass(tunnel) {
+            if (!tunnel.is_active) return 'bg-slate-100';
             if (tunnel.verified === 'loading') return 'bg-yellow-100';
             if (tunnel.verified === false) return 'bg-red-100 glow-red';
             return 'bg-emerald-100 glow-green';
         },
         statusIconClass(tunnel) {
+            if (!tunnel.is_active) return 'text-slate-400';
             if (tunnel.verified === 'loading') return 'text-yellow-500 animate-spin';
             if (tunnel.verified === false) return 'text-red-500';
             return 'text-emerald-500';
@@ -515,8 +604,8 @@ createApp({
                 const data = await res.json();
                 if (res.ok) {
                     this.isLoggedIn = true;
-                    this.currentUser = this.authForm.username;
-                    localStorage.setItem('token', data.token);
+                    this.currentUser = data.username || this.authForm.username;
+                    localStorage.setItem('token', data.token || 'dummy-token-for-mvp');
                     localStorage.setItem('username', this.currentUser);
                     this.showAuth = false;
                     this.authNeedMfa = false;
@@ -559,22 +648,73 @@ createApp({
             } catch (e) { this.toast('error', '网络错误'); }
         },
 
-        logout() {
+        async logout() {
+            const hasTunnels = this.tunnels.length > 0;
+            const saveTunnels = hasTunnels
+                ? window.confirm('是否保存现有隧道后再退出？\n点击“确定”保存并退出，点击“取消”不保存直接退出。')
+                : true;
+
+            try {
+                if (this.currentUser) {
+                    const res = await fetch('/tunnel/logout', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-User': this.currentUser
+                        },
+                        body: JSON.stringify({ save_tunnels: saveTunnels })
+                    });
+                    if (!res.ok) {
+                        const data = await res.json();
+                        this.toast('error', data.detail || '退出失败');
+                        return;
+                    }
+                }
+            } catch (e) {
+                this.toast('error', '退出失败');
+                return;
+            }
+
+            this.finalizeLogout();
+            if (hasTunnels) {
+                this.toast('success', saveTunnels ? '已保存隧道配置并退出' : '未保存隧道配置，已退出');
+            }
+        },
+
+        finalizeLogout() {
             this.isLoggedIn = false;
             this.currentUser = '';
             localStorage.removeItem('token');
             localStorage.removeItem('username');
             this.tunnels = [];
+            this.groups = [];
+            this.selectedGroupName = '';
+            this.groupRenameTarget = '';
         },
 
         async fetchTunnels() {
+            if (!this.currentUser) {
+                this.tunnels = [];
+                this.groups = [];
+                return;
+            }
             try {
-                const res = await fetch('/tunnel/list');
-                const data = await res.json();
+                const [tunnelRes, groupRes] = await Promise.all([
+                    fetch('/tunnel/list', {
+                        headers: { 'X-User': this.currentUser }
+                    }),
+                    fetch('/tunnel/groups', {
+                        headers: { 'X-User': this.currentUser }
+                    })
+                ]);
+                const data = await tunnelRes.json();
+                const groupData = await groupRes.json();
                 this.tunnels = data.tunnels.map(t => {
                     const existing = this.tunnels.find(et => et.id === t.id);
-                    return existing ? { ...t, verified: existing.verified } : { ...t, verified: true };
+                    const verified = t.is_active ? (existing ? existing.verified : true) : null;
+                    return { ...t, verified };
                 });
+                this.groups = groupRes.ok ? groupData.groups : [];
             } catch (e) { console.error(e); }
         },
 
@@ -595,6 +735,22 @@ createApp({
             }
         },
 
+        async startTunnel(tunnelId) {
+            try {
+                const res = await fetch(`/tunnel/start/${tunnelId}`, {
+                    method: 'POST',
+                    headers: { 'X-User': this.currentUser }
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    this.fetchTunnels();
+                    this.toast('success', '隧道已启动');
+                } else {
+                    this.toast('error', data.detail || '启动失败');
+                }
+            } catch (e) { this.toast('error', '网络错误'); }
+        },
+
         async createTunnel() {
             this.creating = true;
             try {
@@ -605,13 +761,17 @@ createApp({
                 const res = await fetch('/tunnel/create', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'X-User': this.currentUser },
-                    body: JSON.stringify(this.tunnelForm)
+                    body: JSON.stringify({
+                        ...this.tunnelForm,
+                        group_name: this.tunnelForm.group_name ? this.tunnelForm.group_name.trim() : ''
+                    })
                 });
                 const data = await res.json();
                 if (res.ok) {
                     this.fetchTunnels();
                     this.toast('success', '隧道创建成功！');
                     this.tunnelForm.remark = '';
+                    this.tunnelForm.group_name = '';
                 } else {
                     this.toast('error', data.detail || '创建失败');
                 }
@@ -630,6 +790,22 @@ createApp({
             } catch (e) { console.error(e); }
         },
 
+        async deleteTunnel(tunnelId) {
+            try {
+                const res = await fetch(`/tunnel/${tunnelId}`, {
+                    method: 'DELETE',
+                    headers: { 'X-User': this.currentUser }
+                });
+                if (res.ok) {
+                    this.fetchTunnels();
+                    this.toast('success', '隧道记录已删除');
+                } else {
+                    const data = await res.json();
+                    this.toast('error', data.detail || '删除失败');
+                }
+            } catch (e) { this.toast('error', '网络错误'); }
+        },
+
         async saveEditedTunnel() {
             try {
                 const res = await fetch(`/tunnel/update/${this.editingTunnel.id}`, {
@@ -637,6 +813,7 @@ createApp({
                     headers: { 'Content-Type': 'application/json', 'X-User': this.currentUser },
                     body: JSON.stringify({
                         remark: this.editingTunnel.remark,
+                        group_name: this.editingTunnel.group_name ? this.editingTunnel.group_name.trim() : '',
                         ssh_host: this.editingTunnel.ssh_host,
                         ssh_port: this.editingTunnel.ssh_port,
                         username: this.editingTunnel.username,
@@ -658,6 +835,62 @@ createApp({
             } catch (e) { this.toast('error', '网络错误'); }
         },
 
+        async renameGroup() {
+            const oldGroupName = this.selectedGroupName.trim();
+            const newGroupName = this.groupRenameTarget.trim();
+            if (!oldGroupName) {
+                this.toast('error', '请先选择要重命名的分组');
+                return;
+            }
+            if (!newGroupName) {
+                this.toast('error', '请输入新的分组名');
+                return;
+            }
+            try {
+                const res = await fetch('/tunnel/groups/rename', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-User': this.currentUser },
+                    body: JSON.stringify({ old_group_name: oldGroupName, new_group_name: newGroupName })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    this.selectedGroupName = newGroupName;
+                    this.groupRenameTarget = '';
+                    await this.fetchTunnels();
+                    this.toast('success', `已重命名 ${data.changed_count} 条隧道`);
+                } else {
+                    this.toast('error', data.detail || '分组重命名失败');
+                }
+            } catch (e) { this.toast('error', '网络错误'); }
+        },
+
+        async clearGroup() {
+            const groupName = this.selectedGroupName.trim();
+            if (!groupName) {
+                this.toast('error', '请先选择要清空的分组');
+                return;
+            }
+            const confirmed = window.confirm(`确认将分组“${groupName}”下的隧道全部移到“未分组”吗？`);
+            if (!confirmed) return;
+
+            try {
+                const res = await fetch('/tunnel/groups/clear', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-User': this.currentUser },
+                    body: JSON.stringify({ group_name: groupName })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    this.selectedGroupName = '';
+                    this.groupRenameTarget = '';
+                    await this.fetchTunnels();
+                    this.toast('success', `已清空 ${data.changed_count} 条隧道的分组`);
+                } else {
+                    this.toast('error', data.detail || '清空分组失败');
+                }
+            } catch (e) { this.toast('error', '网络错误'); }
+        },
+
         openEditTunnelModal(tunnel) {
             this.editingTunnel = { ...tunnel };
             this.showEditTunnelModal = true;
@@ -665,7 +898,7 @@ createApp({
     },
     mounted() {
         const token = localStorage.getItem('token');
-        if (token) {
+        if (token && token !== 'undefined') {
             this.isLoggedIn = true;
             this.currentUser = localStorage.getItem('username') || '';
             this.fetchTunnels();

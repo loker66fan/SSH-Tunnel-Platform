@@ -1,6 +1,6 @@
 # SSH 隧道平台 (SSH Tunnel Platform)
 
-> 一个基于 Python 的高安全、高可扩展的 SSH 隧道控制平台，提供基于 Vue 3 的 Web 管理界面、独立审计日志页和交互式 Web SSH 终端。
+> 一个基于 Python 的 SSH 隧道控制平台，提供账号注册、按用户持久化的隧道配置、自定义分组、独立审计日志页和交互式 Web SSH 终端。
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100%2B-009688)](https://fastapi.tiangolo.com/)
@@ -27,10 +27,11 @@
 
 | 类别 | 功能 |
 |------|------|
-| 🔐 **认证** | 预置账号登录、TOTP 两步验证 (MFA) |
-| 🔗 **隧道** | 本地端口转发、SOCKS5 动态代理、远程端口转发 |
+| 🔐 **认证** | 账号注册/登录、预置管理员账号、TOTP 两步验证 (MFA) |
+| 🔗 **隧道** | 本地端口转发、SOCKS5 动态代理、按用户持久化保存、退出登录时保存/丢弃 |
+| 🗂️ **分组** | 我的隧道支持自定义分组、分组重命名、清空分组 |
 | 🖥️ **Web SSH** | 基于 xterm.js 的交互式 Web 终端，双向实时通信 |
-| 📋 **审计** | 完整的操作审计日志（登录/隧道创建/命令执行）+ 独立日志页面 |
+| 📋 **审计** | 完整的操作审计日志（登录/隧道创建/命令执行）+ 独立日志页面 + 24h/7d/30d/90d 清理 |
 | 🛡️ **权限** | 基于 IP/端口的 ACL 访问控制 |
 | 🎨 **前端** | Vue 3 + TailwindCSS 仪表盘、独立审计日志页、xterm.js 终端 |
 | 🔌 **可扩展** | SSH 后端抽象层，支持多实现；插件化认证系统 |
@@ -251,15 +252,21 @@ ssh_gateway_project_v2/
 ```bash
 # 1. 克隆项目
 git clone <repository-url>
-cd ssh_gateway_project_v2
+cd SSH-Tunnel-Platform
 
 # 2. 安装依赖
 pip install -r requirements.txt
 
-# 3. 启动服务器
-python -m uvicorn apps.api.main:app --host 0.0.0.0 --port 18002
+# 3. 初始化示例账号（可选，但管理员功能推荐执行）
+python scripts/init_mvp_data.py
 
-# 4. 打开浏览器
+# 4. 启动服务器
+python main.py
+
+# 或者使用 uvicorn 入口
+# python -m uvicorn apps.api.main:app --host 0.0.0.0 --port 18002
+
+# 5. 打开浏览器
 # http://localhost:18002
 ```
 
@@ -269,16 +276,20 @@ python -m uvicorn apps.api.main:app --host 0.0.0.0 --port 18002
 
 ### 1. 账号说明与登录
 
-当前版本**不提供注册账号功能**，请直接使用系统内置账号登录。
+当前版本支持**注册普通账号**。如果需要管理员权限或示例账号，请先执行：
 
-可用账号：
+```bash
+python scripts/init_mvp_data.py
+```
+
+示例账号：
 
 | 账号类型 | 用户名 | 密码 |
 |------|------|------|
 | 普通用户 | `user` | `password` |
 | 管理员 | `admin` | `admin` |
 
-打开 `http://localhost:18002` 后，点击"登录"并输入已有账号凭据。
+打开 `http://localhost:18002` 后，你可以直接注册普通账号，或使用已有账号登录。
 
 ### 2. 启用 MFA（推荐）
 
@@ -299,6 +310,7 @@ python -m uvicorn apps.api.main:app --host 0.0.0.0 --port 18002
 | SSH 用户名 | SSH 登录用户 | `root` |
 | SSH 密码 | SSH 登录密码 | `********` |
 | 本地端口 | 本机监听端口 | `8080` |
+| 分组 | 自定义分组名称 | `生产环境` |
 | 远程主机 | 转发目标地址 | `127.0.0.1` |
 | 远程端口 | 转发目标端口 | `80` |
 | 类型 | `local` 或 `socks5` | `local` |
@@ -314,9 +326,13 @@ python -m uvicorn apps.api.main:app --host 0.0.0.0 --port 18002
 | 操作 | 说明 |
 |------|------|
 | ⚡ **验证** | SSH 连接存活检测，三色图标：绿色（正常）/ 黄色（检测中）/ 红色（断开） |
-| ✏️ **修改** | 停止旧隧道 + 用新参数重建（支持 SSH 主机/端口/用户名/密码/远程目标/备注） |
+| ✏️ **修改** | 支持更新 SSH 参数、备注和分组；运行中的隧道会自动重建 |
+| ▶️ **启动已保存隧道** | 已保存但未运行的隧道可以直接重新启动 |
 | 🖥️ **终端** | 打开交互式 Web SSH 终端 |
-| 🛑 **停止** | 关闭并移除隧道 |
+| 🛑 **停止** | 停止隧道但保留当前账号下的保存记录 |
+| 🗑️ **删除** | 删除当前账号下的隧道记录 |
+| 🗂️ **分组管理** | 支持按分组展示、重命名分组、清空分组（移动到未分组） |
+| 🚪 **退出登录** | 退出时可选择保存现有隧道，或直接丢弃当前账号的隧道记录 |
 
 ### 6. 查看审计日志
 
@@ -324,6 +340,7 @@ python -m uvicorn apps.api.main:app --host 0.0.0.0 --port 18002
 2. 点击首页中的 **"审计日志"** 按钮
 3. 跳转到独立页面 `/audit.html`
 4. 查看最近 100 条操作记录和成功/失败统计
+5. 可按保留策略清理 `24h`、`7d`、`30d`、`90d` 之前的日志
 
 审计日志页从首页独立出来，避免管理面板被长表格占满，同时保留管理员访问控制。
 
@@ -339,17 +356,25 @@ python -m uvicorn apps.api.main:app --host 0.0.0.0 --port 18002
 | `POST` | `/auth/login` | 用户登录 |
 | `POST` | `/auth/mfa/setup` | MFA 初始化 (返回 QR 码) |
 | `POST` | `/auth/mfa/verify` | MFA 验证码校验 |
+| `GET` | `/auth/logs` | 获取最近 100 条审计日志（仅管理员） |
+| `POST` | `/auth/logs/cleanup` | 按保留策略清理审计日志（仅管理员） |
 
 ### 隧道
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | `POST` | `/tunnel/create` | 创建隧道 |
-| `GET` | `/tunnel/list` | 列出所有隧道 |
+| `GET` | `/tunnel/list` | 列出当前用户的隧道 |
+| `GET` | `/tunnel/groups` | 列出当前用户的分组摘要 |
+| `POST` | `/tunnel/start/{id}` | 启动已保存隧道 |
 | `POST` | `/tunnel/verify/{id}` | 验证隧道连通性 (SSH 连接存活检测) |
 | `POST` | `/tunnel/exec/{id}` | 执行命令 |
 | `POST` | `/tunnel/update/{id}` | 修改隧道参数 (停止重建) |
 | `POST` | `/tunnel/stop/{id}` | 停止隧道 |
+| `DELETE` | `/tunnel/{id}` | 删除隧道记录 |
+| `POST` | `/tunnel/groups/rename` | 重命名分组 |
+| `POST` | `/tunnel/groups/clear` | 清空分组（移到未分组） |
+| `POST` | `/tunnel/logout` | 退出登录时保存或丢弃当前用户隧道 |
 | **WS** | `/tunnel/ws/terminal/{id}` | WebSocket 终端 |
 
 ---

@@ -2,7 +2,6 @@
 from fastapi import APIRouter, HTTPException, Header, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from services.tunnel_service import tunnel_service
-from modules.tunnel.manager import tunnel_manager
 from typing import Optional
 from core.logger import logger
 
@@ -18,41 +17,47 @@ class TunnelCreateRequest(BaseModel):
     remote_port: Optional[int] = None
     type: str = "local" # local, socks5
     remark: Optional[str] = None
+    group_name: Optional[str] = None
 
 @router.post("/create")
 async def create_tunnel(req: TunnelCreateRequest, x_user: str = Header("user")):
     try:
         tid = await tunnel_service.create_tunnel(x_user, req.model_dump())
         return {"tunnel_id": tid}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/list")
-async def list_tunnels():
-    tunnels_info = []
-    logger.info(f"Listing tunnels, count: {len(tunnel_manager._active_tunnels)}")
-    
-    for tid, backend in tunnel_manager._active_tunnels.items():
-        is_socks = hasattr(backend, '_is_socks') and backend._is_socks
-        
-        tunnels_info.append({
-            "id": tid,
-            "local_port": backend.local_port or 0,
-            "type": "socks5" if is_socks else "local",
-            "ssh_host": backend.host,
-            "ssh_port": backend.port,
-            "username": backend.username,
-            "password": backend.password,
-            "remote_host": backend.remote_host,
-            "remote_port": backend.remote_port,
-            "remark": backend.remark
-        })
+async def list_tunnels(x_user: str = Header("user")):
+    tunnels_info = await tunnel_service.list_tunnels(x_user)
+    logger.info(f"Listing tunnels for {x_user}, count: {len(tunnels_info)}")
     return {"tunnels": tunnels_info}
+
+@router.get("/groups")
+async def list_tunnel_groups(x_user: str = Header("user")):
+    groups = await tunnel_service.list_tunnel_groups(x_user)
+    return {"groups": groups}
+
+@router.post("/start/{tunnel_id}")
+async def start_tunnel(tunnel_id: str, x_user: str = Header("user")):
+    try:
+        success = await tunnel_service.start_tunnel(x_user, tunnel_id)
+        if success:
+            return {"message": "Tunnel started"}
+        raise HTTPException(status_code=404, detail="Tunnel not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/verify/{tunnel_id}")
 async def verify_tunnel(tunnel_id: str, local_port: int, x_user: str = Header("user")):
     try:
         return await tunnel_service.verify_tunnel(x_user, tunnel_id, local_port)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -62,11 +67,18 @@ async def stop_tunnel(tunnel_id: str, x_user: str = Header("user")):
         return {"message": "Tunnel stopped"}
     raise HTTPException(status_code=404, detail="Tunnel not found")
 
+@router.delete("/{tunnel_id}")
+async def delete_tunnel(tunnel_id: str, x_user: str = Header("user")):
+    if await tunnel_service.delete_tunnel(x_user, tunnel_id):
+        return {"message": "Tunnel deleted"}
+    raise HTTPException(status_code=404, detail="Tunnel not found")
+
 class CommandRequest(BaseModel):
     command: str
 
 class TunnelUpdateRequest(BaseModel):
     remark: Optional[str] = None
+    group_name: Optional[str] = None
     ssh_host: Optional[str] = None
     ssh_port: Optional[int] = None
     username: Optional[str] = None
@@ -76,11 +88,23 @@ class TunnelUpdateRequest(BaseModel):
     remote_port: Optional[int] = None
     type: Optional[str] = None
 
+class LogoutRequest(BaseModel):
+    save_tunnels: bool = True
+
+class TunnelGroupRenameRequest(BaseModel):
+    old_group_name: str
+    new_group_name: str
+
+class TunnelGroupClearRequest(BaseModel):
+    group_name: str
+
 @router.post("/exec/{tunnel_id}")
 async def exec_command(tunnel_id: str, req: CommandRequest, x_user: str = Header("user")):
     try:
         output = await tunnel_service.run_command(x_user, tunnel_id, req.command)
         return {"output": output}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -89,13 +113,45 @@ async def update_tunnel(tunnel_id: str, req: TunnelUpdateRequest, x_user: str = 
     try:
         success = await tunnel_service.update_tunnel(
             x_user, tunnel_id, 
-            req.remark, req.ssh_host, req.ssh_port,
+            req.remark, req.group_name, req.ssh_host, req.ssh_port,
             req.username, req.password, req.local_port,
             req.remote_host, req.remote_port, req.type
         )
         if success:
             return {"message": "Tunnel updated successfully"}
         raise HTTPException(status_code=404, detail="Tunnel not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/groups/rename")
+async def rename_tunnel_group(req: TunnelGroupRenameRequest, x_user: str = Header("user")):
+    try:
+        changed_count = await tunnel_service.rename_tunnel_group(
+            x_user, req.old_group_name, req.new_group_name
+        )
+        return {"message": "Group renamed", "changed_count": changed_count}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/groups/clear")
+async def clear_tunnel_group(req: TunnelGroupClearRequest, x_user: str = Header("user")):
+    try:
+        changed_count = await tunnel_service.clear_tunnel_group(x_user, req.group_name)
+        return {"message": "Group cleared", "changed_count": changed_count}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/logout")
+async def logout(req: LogoutRequest, x_user: str = Header("user")):
+    try:
+        await tunnel_service.logout_user(x_user, req.save_tunnels)
+        return {"message": "Logout successful"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

@@ -128,24 +128,31 @@ def stop_tunnel(tunnel_id, api_user):
         console.print(f"[bold red]Connection Error:[/bold red] {str(e)}")
 
 @cli.command()
-def list_tunnels():
-    """List all active tunnels"""
+@click.option('--api-user', default="user", help="API User for ACL/Audit")
+def list_tunnels(api_user):
+    """List saved tunnels for the current user"""
     try:
-        resp = requests.get(f"{API_BASE}/tunnel/list")
+        resp = requests.get(f"{API_BASE}/tunnel/list", headers={"X-User": api_user})
         data = handle_response(resp)
         if data:
             tunnels = data.get('tunnels', [])
             if not tunnels:
-                console.print("[yellow]No active tunnels.[/yellow]")
+                console.print("[yellow]No saved tunnels.[/yellow]")
                 return
             
-            table = Table(title="Active SSH Tunnels")
+            table = Table(title="SSH Tunnels")
             table.add_column("ID", style="cyan")
             table.add_column("Local Port", style="green")
             table.add_column("Type", style="magenta")
+            table.add_column("Status", style="yellow")
             
             for t in tunnels:
-                table.add_row(t['id'][:13] + "...", str(t['local_port']), t['type'])
+                table.add_row(
+                    t['id'][:13] + "...",
+                    str(t['local_port']),
+                    t['type'],
+                    "active" if t.get('is_active') else "saved"
+                )
             
             console.print(table)
     except Exception as e:
