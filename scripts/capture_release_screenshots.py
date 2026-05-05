@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import os
 import sys
 import subprocess
@@ -15,32 +14,6 @@ API_PORT = 18012
 BASE_URL = f"http://127.0.0.1:{API_PORT}"
 
 
-async def capture_web_screenshots() -> None:
-    from playwright.async_api import async_playwright
-
-    SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
-
-    async with async_playwright() as playwright:
-        browser = await playwright.chromium.launch(headless=True)
-        page = await browser.new_page(viewport={"width": 1440, "height": 1100})
-
-        await page.goto(BASE_URL, wait_until="networkidle")
-        await page.locator("button").filter(has_text="登录").click()
-        await page.locator("input").nth(0).fill("admin")
-        await page.locator("input[type='password']").fill("admin")
-        await page.locator("button").filter(has_text="登录").nth(1).click()
-        await page.wait_for_timeout(1800)
-        await page.screenshot(path=str(SCREENSHOT_DIR / "web-dashboard.png"), full_page=False)
-
-        await page.goto(f"{BASE_URL}/audit.html", wait_until="networkidle")
-        await page.wait_for_timeout(1200)
-        await page.screenshot(path=str(SCREENSHOT_DIR / "web-audit.png"), full_page=False)
-
-        await page.goto(f"{BASE_URL}/terminal.html?tid=demo-terminal&user=admin", wait_until="networkidle")
-        await page.screenshot(path=str(SCREENSHOT_DIR / "web-terminal.png"), full_page=True)
-        await browser.close()
-
-
 def capture_qt_screenshots() -> None:
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     os.environ.setdefault("QTWEBENGINE_DISABLE_SANDBOX", "1")
@@ -51,29 +24,46 @@ def capture_qt_screenshots() -> None:
 
     from PySide6.QtCore import QTimer
     from PySide6.QtWidgets import QApplication
+    from qfluentwidgets import Theme, setTheme, setThemeColor
 
     from apps.desktop.backend import BackendServerManager
-    from apps.desktop.qt_app import DesktopWindow, LaunchChoiceWindow, LoginDialogWindow, _load_language_setting, _load_theme_setting
+    from apps.desktop.qt_app import (
+        ACCENT_COLOR,
+        DesktopWindow,
+        LaunchChoiceWindow,
+        LoginDialogWindow,
+        _load_language_setting,
+        _save_theme_setting,
+        apply_theme_palette,
+    )
 
     app = QApplication.instance() or QApplication([])
     setattr(app, "_ssh_tunnel_language", _load_language_setting())
-    setattr(app, "_ssh_tunnel_theme", _load_theme_setting())
+    _save_theme_setting(Theme.LIGHT)
+    setattr(app, "_ssh_tunnel_theme", Theme.LIGHT)
+    apply_theme_palette(Theme.LIGHT)
+    setTheme(Theme.LIGHT)
+    setThemeColor(ACCENT_COLOR)
 
     backend = BackendServerManager(base_host="127.0.0.1", port=API_PORT)
 
     launcher = LaunchChoiceWindow(backend)
+    launcher.refresh_theme()
     launcher.refresh_language()
     launcher.show()
     app.processEvents()
     launcher.grab().save(str(SCREENSHOT_DIR / "launcher.png"))
 
     login = LoginDialogWindow(backend, launcher=launcher)
+    login.refresh_theme()
     login.refresh_language()
     login.show()
     app.processEvents()
     login.grab().save(str(SCREENSHOT_DIR / "qt-login.png"))
 
     desktop = DesktopWindow(backend)
+    desktop._theme = Theme.LIGHT
+    desktop.apply_current_theme()
     desktop.current_user = "admin"
     desktop.client.set_auth("admin", "")
     desktop.sync_backend_base_url()
@@ -138,7 +128,6 @@ def main() -> int:
     try:
         wait_for_api()
         capture_qt_screenshots()
-        asyncio.run(capture_web_screenshots())
         print(f"Saved screenshots to {SCREENSHOT_DIR}")
         return 0
     finally:
