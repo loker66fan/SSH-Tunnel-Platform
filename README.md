@@ -6,6 +6,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100%2B-009688)](https://fastapi.tiangolo.com/)
 [![AsyncSSH](https://img.shields.io/badge/AsyncSSH-2.14%2B-orange)](https://asyncssh.readthedocs.io/)
 [![License](https://img.shields.io/badge/License-MIT-green)](./LICENSE)
+[![Version](https://img.shields.io/badge/Version-0.2.0-blueviolet)](./VERSION)
 
 ---
 
@@ -16,6 +17,8 @@
 - [数据流](#数据流)
 - [项目结构](#项目结构)
 - [快速开始](#快速开始)
+- [发布信息](#发布信息)
+- [截图预览](#截图预览)
 - [使用指南](#使用指南)
 - [API 概览](#api-概览)
 - [安全设计](#安全设计)
@@ -35,6 +38,53 @@
 | 🛡️ **权限** | 基于 IP/端口的 ACL 访问控制 |
 | 🎨 **前端** | Vue 3 + TailwindCSS 仪表盘、独立审计日志页、xterm.js 终端 |
 | 🔌 **可扩展** | SSH 后端抽象层，支持多实现；插件化认证系统 |
+
+---
+
+## 发布信息
+
+| 项目项 | 当前值 |
+|------|------|
+| 项目名称 | `SSH Tunnel Platform` |
+| 当前版本 | `0.2.0` |
+| 许可证 | `MIT` |
+| 项目简介 | 基于 Python 的 SSH 隧道控制平台，提供 Web 仪表盘与 Qt 桌面工作台，共享同一套 FastAPI 后端。 |
+| 桌面启动入口 | `python main.py` |
+| API / Web 启动入口 | `python -m uvicorn apps.api.main:app --host 0.0.0.0 --port 18002` |
+
+关联发布文件：
+
+- [LICENSE](./LICENSE)
+- [VERSION](./VERSION)
+- [PROJECT_SUMMARY.md](./PROJECT_SUMMARY.md)
+
+---
+
+## 截图预览
+
+### 启动选择页
+
+![Launcher](./assets/screenshots/launcher.png)
+
+### Qt 登录页
+
+![Qt Login](./assets/screenshots/qt-login.png)
+
+### Qt 工作台
+
+![Qt Workspace](./assets/screenshots/qt-workspace.png)
+
+### Web 仪表盘
+
+![Web Dashboard](./assets/screenshots/web-dashboard.png)
+
+### 审计日志页
+
+![Web Audit](./assets/screenshots/web-audit.png)
+
+### Web 终端页
+
+![Web Terminal](./assets/screenshots/web-terminal.png)
 
 ---
 
@@ -230,6 +280,10 @@ ssh_gateway_project_v2/
 ├── keys/                     # SSH 主机密钥
 ├── deploy/                   # 部署配置
 │
+├── LICENSE                   # MIT 许可证
+├── VERSION                   # 当前版本号
+├── PROJECT_SUMMARY.md        # 发布简介
+├── assets/screenshots/       # 发布截图资源
 ├── requirements.txt          # Python 依赖
 ├── CHANGELOG.md              # 开发日志 & 使用说明
 └── README.md                 # 本文件
@@ -257,16 +311,33 @@ cd SSH-Tunnel-Platform
 # 2. 安装依赖
 pip install -r requirements.txt
 
-# 3. 初始化示例账号（可选，但管理员功能推荐执行）
+# 3. 启动程序
+python main.py
+```
+
+启动后会先进入模式选择页：
+
+- `Web 使用`：启动内置 FastAPI 服务并打开浏览器版界面
+- `Qt 使用`：启动基于 `PySide6 + PyQt-Fluent-Widgets` 风格的桌面端，功能与 Web 共用同一套后端接口
+
+Qt 端已覆盖这些能力：
+
+- 登录 / 注册
+- 隧道创建、启动、停止、删除、编辑、验证
+- 分组重命名、清空分组
+- 审计日志查看与清理（管理员）
+- MFA 配置与验证
+- 命令执行
+- 终端页内嵌打开（复用现有 Web terminal 页面）
+
+```bash
+# 4. 初始化示例账号（可选，但管理员功能推荐执行）
 python scripts/init_mvp_data.py
 
-# 4. 启动服务器
-python main.py
+# 5. 仅启动 API / Web 服务
+python -m uvicorn apps.api.main:app --host 0.0.0.0 --port 18002
 
-# 或者使用 uvicorn 入口
-# python -m uvicorn apps.api.main:app --host 0.0.0.0 --port 18002
-
-# 5. 打开浏览器
+# 6. 打开浏览器
 # http://localhost:18002
 ```
 

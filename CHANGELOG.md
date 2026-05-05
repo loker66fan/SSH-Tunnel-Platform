@@ -2,6 +2,28 @@
 
 ---
 
+## 2026-05-06：发布资料整理与仓库元数据补齐
+
+**目标**：整理仓库发布信息，补齐许可证、版本号、项目简介和截图资源目录，确保仓库具备基础发布条件。
+
+**新增内容**：
+
+1. **发布元数据**
+   - 新增 `LICENSE`（MIT）
+   - 新增 `VERSION`
+   - 新增 `PROJECT_SUMMARY.md`
+
+2. **发布资源结构**
+   - 新增 `assets/screenshots/` 截图资源目录
+   - 统一 README 中的截图引用路径
+
+3. **文档校正**
+   - 修正 `README.md` 中 `python main.py` 的定位为 Qt 桌面启动入口
+   - 单独标注 API / Web 直接启动方式为 `uvicorn apps.api.main:app`
+   - 补充版本号、许可证、项目简介和发布说明章节
+
+---
+
 ## 2026-05-05：账号持久化、审计清理与隧道分组
 
 **目标**：补齐多用户日常使用能力，让账号、隧道和审计日志都具备可持续维护的持久化管理能力。
@@ -30,7 +52,8 @@
 
 5. **启动入口兼容**
    - 新增根目录 `main.py`
-   - 现在既可用 `python main.py`，也可继续使用 `uvicorn apps.api.main:app`
+   - `python main.py` 用于打开 Qt 桌面启动器
+   - 纯 API / Web 服务建议使用 `python -m uvicorn apps.api.main:app --host 0.0.0.0 --port 18002`
 
 **新增接口**：
 
@@ -107,10 +130,13 @@ cd SSH-Tunnel-Platform
 # 2. 安装依赖（首次运行）
 pip install -r requirements.txt
 
-# 3. 启动 API 服务器
+# 3. 启动桌面程序
 python main.py
 
-# 4. 打开浏览器访问
+# 4. 如需仅启动 API / Web 服务
+python -m uvicorn apps.api.main:app --host 0.0.0.0 --port 18002
+
+# 5. 打开浏览器访问
 # http://localhost:18002
 ```
 
